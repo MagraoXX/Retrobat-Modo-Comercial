@@ -1,0 +1,14 @@
+# Pacotes grandes e binários de distribuição
+*.zip
+*.7z
+*.rar
+
+# Arquivos temporários do Windows
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# Estado local
+*.tmp
