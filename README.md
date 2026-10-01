@@ -291,55 +291,6 @@ Isso permite manter ROMs e BIOS separadas da distribuição.
 
 Consulte [Download e verificação do pacote](DOWNLOAD.md). O ZIP atualizado tem aproximadamente **6,6 GB**; o link público ainda será adicionado.
 
-## Demonstrações
-
-GIFs serão adicionados à página para demonstrar:
-
-- adição de crédito e contador atualizando;
-- transferência de ficha em Arcade;
-- alternância entre Modo Comercial e Modo Livre.
-
-### Vídeo
-
-**Demonstração completa em breve.**
-
-O vídeo mostrará:
-
-`Inicialização → Crédito → TEMPO → Arcade/FICHA → troca de jogo → Modo Livre → Menu do operador`
-
----
-
-## Galeria
-
-### Boas-vindas
-![Boas-vindas](docs/images/01-boas-vindas.png)
-
-### Controles
-![Controles](docs/images/02-controles.png)
-
-### Modo Comercial e Modo Livre
-![Modos](docs/images/03-modos.png)
-
-### Adicionar crédito
-![Adicionar crédito](docs/images/04-adicionar-credito.png)
-
-### Sistemas por tempo
-![Sistemas por tempo](docs/images/05-sistemas-tempo.png)
-
-### Arcade por ficha
-![Arcade por ficha](docs/images/06-arcade-ficha.png)
-
-### Fluxo Arcade
-![Fluxo arcade](docs/images/07-fluxo-arcade.png)
-
-### Sair e trocar de jogo
-![Sair e trocar de jogo](docs/images/08-sair-trocar.png)
-
-### Menu do operador
-![Menu do operador](docs/images/09-menu-operador.png)
-
----
-
 ## Aviso
 
 Este é um projeto independente e não possui afiliação oficial com o RetroBat.
