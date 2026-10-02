@@ -1,5 +1,7 @@
 # Download — RetroBat Modo Comercial v1.0
 
+**[Baixar pelo Google Drive](https://drive.google.com/file/d/1RmzGhgXdsRyvZyTFnOXALkUV2YAODpXr/view?usp=sharing)**
+
 O pacote da versão atual foi criado e passou no teste de integridade do ZIP.
 
 **[Baixar RetroBat Modo Comercial v1.0 pelo MediaFire](https://www.mediafire.com/file/utp5aglcavizdzw/RetroBat-Modo-Comercial-20261001-201951.zip/file)**
