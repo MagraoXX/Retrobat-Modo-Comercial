@@ -289,7 +289,9 @@ Isso permite manter ROMs e BIOS separadas da distribuição.
 
 ## Download
 
-Consulte [Download e verificação do pacote](DOWNLOAD.md). O ZIP atualizado tem aproximadamente **6,6 GB**; o link público ainda será adicionado.
+**[Baixar RetroBat Modo Comercial — MediaFire](https://www.mediafire.com/file/utp5aglcavizdzw/RetroBat-Modo-Comercial-20261001-201951.zip/file)**
+
+Tamanho: aproximadamente **6,6 GB**. Consulte [Download e verificação do pacote](DOWNLOAD.md) para conferir o SHA-256.
 
 ## Aviso
 
@@ -305,4 +307,4 @@ RetroBat, emuladores, consoles, jogos e marcas citadas pertencem aos seus respec
 - Correção do contador para ficar oculto no Modo Livre.
 - No Modo Livre, Select envia ficha diretamente ao arcade sem consumir saldo geral e sem exigir pressionamento longo.
 - Pasta `mp3` disponível para músicas adicionais do menu.
-- Pacote atualizado: consulte [Download](DOWNLOAD.md). O link público ainda será adicionado.
+- Pacote atualizado: consulte [Download](DOWNLOAD.md). Download disponível pelo MediaFire.
