@@ -1,3 +1,5 @@
+![Capa RetroBat Modo Comercial](docs/images/capa-modo-comercial.png)
+
 # RetroBat Modo Comercial v1.0
 
 <p align="center">
@@ -11,8 +13,6 @@
 > Se você pagou por uma cópia deste projeto, solicite reembolso ao vendedor.
 > Repositório oficial: **https://github.com/MagraoXX/Retrobat-Modo-Comercial**
 > Criado por **Magrão XX / China Peleleca**.
-
-![RetroBat Modo Comercial](docs/images/01-boas-vindas.png)
 
 ## Sobre o projeto
 
