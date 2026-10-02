@@ -289,6 +289,8 @@ Isso permite manter ROMs e BIOS separadas da distribuição.
 
 ## Download
 
+**[Baixar pelo Google Drive](https://drive.google.com/file/d/1RmzGhgXdsRyvZyTFnOXALkUV2YAODpXr/view?usp=sharing)**
+
 **[Baixar RetroBat Modo Comercial — MediaFire](https://www.mediafire.com/file/utp5aglcavizdzw/RetroBat-Modo-Comercial-20261001-201951.zip/file)**
 
 Tamanho: aproximadamente **6,6 GB**. Consulte [Download e verificação do pacote](DOWNLOAD.md) para conferir o SHA-256.
