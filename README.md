@@ -302,6 +302,8 @@ No primeiro uso, o launcher tenta localizar uma biblioteca válida na própria u
 
 ## Download
 
+**[Baixar pelo Internet Archive](https://archive.org/details/retro-bat-modo-comercial-20261001-201951)**
+
 **[Baixar pelo Google Drive](https://drive.google.com/file/d/1RmzGhgXdsRyvZyTFnOXALkUV2YAODpXr/view?usp=sharing)**
 
 **[Baixar RetroBat Modo Comercial — MediaFire](https://www.mediafire.com/file/utp5aglcavizdzw/RetroBat-Modo-Comercial-20261001-201951.zip/file)**
