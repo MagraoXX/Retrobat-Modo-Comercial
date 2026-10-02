@@ -6,7 +6,7 @@
 
 O pacote da versão atual foi criado e passou no teste de integridade do ZIP.
 
-**[Baixar RetroBat Modo Comercial v1.0 pelo MediaFire](https://www.mediafire.com/file/utp5aglcavizdzw/RetroBat-Modo-Comercial-20261001-201951.zip/file)**
+**[Baixar pelo MediaFire](https://www.mediafire.com/file/utp5aglcavizdzw/RetroBat-Modo-Comercial-20261001-201951.zip/file)**
 
 **Arquivo:** `RetroBat-Modo-Comercial-20261001-201951.zip`
 **Tamanho:** 6.615.111.211 bytes (aproximadamente 6,6 GB)
