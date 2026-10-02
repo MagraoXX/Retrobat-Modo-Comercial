@@ -265,13 +265,26 @@ Também existe suporte a diretórios com espaços no nome por meio de um caminho
 
 ---
 
-## Biblioteca
+## Instalação, snaps e pastas compartilhadas
+
+Mantenha uma instalação do **RetroBat comum**. Ela será utilizada para organizar a biblioteca e baixar as mídias dos jogos, como capas, imagens e vídeos de gameplay — as chamadas snaps.
+
+Extraia a pasta **`Retrobat modo comercial` dentro da pasta principal do RetroBat comum**, mantendo a estrutura do pacote.
+
+Para baixar ou atualizar as mídias:
+
+1. Abra o RetroBat comum.
+2. Use a função de baixar mídias dos jogos.
+3. Depois de concluir, feche o RetroBat comum e abra o Modo Comercial por `Retrobat modo comercial.exe`.
+
+O Modo Comercial utiliza a mesma biblioteca e as mídias baixadas pelo RetroBat comum. As pastas compartilhadas permitem aproveitar as ROMs, BIOS, capas e vídeos existentes, sem precisar duplicar esses arquivos.
+
+Por isso, mantenha o RetroBat comum e suas pastas no lugar: ele serve como base da biblioteca e como ferramenta para baixar e atualizar as snaps.
 
 **ROMs e BIOS não fazem parte do pacote.**
 
 No primeiro uso, o launcher tenta localizar uma biblioteca válida na própria unidade. Caso não encontre, o operador pode selecionar a localização da biblioteca.
 
-Isso permite manter ROMs e BIOS separadas da distribuição.
 
 ---
 
