@@ -8,10 +8,17 @@ public final class OpenAiClient {
         void onError(String message);
     }
 
+    private final ChatGptAuth auth;
+
     public OpenAiClient(Context context) {
+        auth = new ChatGptAuth(context);
     }
 
     public void ask(String prompt, Callback callback) {
-        callback.onError("A parte inteligente está em modo gratuito somente. Nenhuma API paga será chamada. Configure um provedor gratuito compatível nas próximas versões.");
+        if (!auth.isConnected()) {
+            callback.onError("Conecte sua conta ChatGPT no Ei Chat TV primeiro.");
+            return;
+        }
+        callback.onError("Conta ChatGPT conectada. A chamada de IA será habilitada depois do teste do fluxo de login nesta TV.");
     }
 }
