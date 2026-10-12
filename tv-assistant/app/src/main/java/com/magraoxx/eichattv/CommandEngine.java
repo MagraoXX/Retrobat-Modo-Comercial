@@ -49,12 +49,12 @@ public final class CommandEngine {
         Result volume = handleVolume(text);
         if (volume.handled) return volume;
 
-        if (containsAny(text, "mudo", "silenciar", "sem som", "mute")) {
+        if (containsAny(text, "mudo", "ativar o mudo", "ativa o mudo", "silenciar", "sem som", "mute")) {
             if (audio == null) return Result.fail("Controle de áudio indisponível.");
             audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, AudioManager.FLAG_SHOW_UI);
             return Result.ok("Som silenciado.");
         }
-        if (containsAny(text, "tirar do mudo", "desmutar", "voltar som", "unmute")) {
+        if (containsAny(text, "tirar do mudo", "desativar o mudo", "desativa o mudo", "desmutar", "voltar som", "unmute")) {
             if (audio == null) return Result.fail("Controle de áudio indisponível.");
             audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, AudioManager.FLAG_SHOW_UI);
             return Result.ok("Som restaurado.");
@@ -133,27 +133,35 @@ public final class CommandEngine {
         if (!containsAny(text, "volume", "som")) return Result.unhandled();
         if (audio == null) return Result.fail("Controle de volume indisponível.");
 
-        int number = extractNumber(text, 1);
-        if (containsAny(text, "abaixa", "abaixar", "baixa", "diminuir", "diminui", "menos")) {
-            for (int i = 0; i < Math.max(1, number); i++) {
-                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER,
-                        i == Math.max(1, number) - 1 ? AudioManager.FLAG_SHOW_UI : 0);
-            }
-            return Result.ok("Volume reduzido em " + Math.max(1, number) + ".");
-        }
-        if (containsAny(text, "aumenta", "aumentar", "sobe", "subir", "mais")) {
-            for (int i = 0; i < Math.max(1, number); i++) {
-                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE,
-                        i == Math.max(1, number) - 1 ? AudioManager.FLAG_SHOW_UI : 0);
-            }
-            return Result.ok("Volume aumentado em " + Math.max(1, number) + ".");
-        }
-        if (text.matches(".*\\b(volume|som)\\s+(em\\s+)?\\d{1,3}\\b.*")) {
+        int number = extractNumber(text, 10);
+        boolean decrease = containsAny(text, "abaixa", "abaixar", "baixa", "diminuir", "diminui", "menos");
+        boolean increase = containsAny(text, "aumenta", "aumentar", "sobe", "subir", "mais");
+        boolean exact = text.matches(".*\\b(para|pra|em)\\s+(o\\s+)?(volume\\s+)?\\d{1,3}\\b.*")
+                || text.matches(".*\\b(volume|som)\\s+(em\\s+)?\\d{1,3}\\b.*");
+
+        if (exact) {
             int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
             int percent = Math.max(0, Math.min(100, number));
             int target = Math.round(max * (percent / 100f));
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI);
             return Result.ok("Volume em " + percent + "%.");
+        }
+
+        if (decrease) {
+            int amount = Math.max(1, number);
+            for (int i = 0; i < amount; i++) {
+                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER,
+                        i == amount - 1 ? AudioManager.FLAG_SHOW_UI : 0);
+            }
+            return Result.ok("Volume reduzido em " + amount + ".");
+        }
+        if (increase) {
+            int amount = Math.max(1, number);
+            for (int i = 0; i < amount; i++) {
+                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE,
+                        i == amount - 1 ? AudioManager.FLAG_SHOW_UI : 0);
+            }
+            return Result.ok("Volume aumentado em " + amount + ".");
         }
         return Result.unhandled();
     }
