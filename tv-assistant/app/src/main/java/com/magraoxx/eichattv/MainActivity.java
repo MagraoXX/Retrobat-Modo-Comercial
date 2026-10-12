@@ -83,7 +83,7 @@ public class MainActivity extends Activity implements RecognitionListener {
         root.addView(button("Selecionar Ei Chat como assistente", v -> openVoiceSettings()));
         root.addView(button("Testar troca para o PlayStation 5", v -> testPlayStation()));
         root.addView(button("Atualizar diagnóstico", v -> status.setText(Diagnostics.buildReport(this))));
-        root.addView(button("Configurar inteligência do ChatGPT", v -> showAiSettings()));
+        root.addView(button("Conectar ChatGPT (em preparação)", v -> showAiSettings()));
 
         setContentView(scroll);
     }
@@ -184,44 +184,21 @@ public class MainActivity extends Activity implements RecognitionListener {
     }
 
     private void showAiSettings() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        int pad = 24;
-        box.setPadding(pad, pad, pad, 0);
-
-        TextView help = new TextView(this);
-        help.setText("A chave não fica embutida no APK; ela é criptografada no Android Keystore desta TV.");
-        box.addView(help);
-
-        EditText key = new EditText(this);
-        key.setHint(new SecureSecretStore(this).load() == null ? "Chave da API OpenAI" : "Chave já configurada — deixe vazio para manter");
-        key.setSingleLine(true);
-        key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        box.addView(key);
-
-        EditText model = new EditText(this);
-        model.setHint("Modelo");
-        model.setSingleLine(true);
-        model.setText(getSharedPreferences("ei_chat_settings", MODE_PRIVATE).getString("ai_model", "gpt-6-astra"));
-        box.addView(model);
-
+        String hostId = getSharedPreferences("ei_chat_auth", MODE_PRIVATE)
+                .getString("host_id", null);
+        if (hostId == null) {
+            hostId = "urn:uuid:" + java.util.UUID.randomUUID().toString();
+            getSharedPreferences("ei_chat_auth", MODE_PRIVATE)
+                    .edit().putString("host_id", hostId).apply();
+        }
         new AlertDialog.Builder(this)
-                .setTitle("Inteligência do Ei Chat")
-                .setView(box)
-                .setPositiveButton("Salvar", (dialog, which) -> {
-                    String entered = key.getText().toString().trim();
-                    try {
-                        if (!entered.isEmpty()) new SecureSecretStore(this).save(entered);
-                        String selectedModel = model.getText().toString().trim();
-                        if (!selectedModel.isEmpty()) {
-                            getSharedPreferences("ei_chat_settings", MODE_PRIVATE).edit().putString("ai_model", selectedModel).apply();
-                        }
-                        status.setText("Configuração da IA salva.");
-                    } catch (Throwable t) {
-                        status.setText("Não consegui proteger a chave: " + t.getClass().getSimpleName());
-                    }
-                })
-                .setNegativeButton("Cancelar", null)
+                .setTitle("Conectar ChatGPT")
+                .setMessage("O Ei Chat TV usará uma conta ChatGPT autorizada por cada usuário. " +
+                        "Esta instalação já tem uma identidade local própria. " +
+                        "O login oficial ainda precisa ser adaptado e testado no navegador da Android TV. " +
+                        "Nenhuma chave de API paga será solicitada nem utilizada automaticamente. " +
+                        "Até a conexão ser concluída, os comandos locais da TV continuam disponíveis.")
+                .setPositiveButton("Entendi", null)
                 .show();
     }
 
