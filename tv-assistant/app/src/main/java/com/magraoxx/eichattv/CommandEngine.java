@@ -29,12 +29,16 @@ public final class CommandEngine {
     private final AudioManager audio;
     private final AppCatalog apps;
     private final HdmiController hdmi;
+    private final TvChannelController tv;
+    private final StoreController store;
 
     public CommandEngine(Context context) {
         this.context = context.getApplicationContext();
         this.audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         this.apps = new AppCatalog(context);
         this.hdmi = new HdmiController(context);
+        this.tv = new TvChannelController(context);
+        this.store = new StoreController(context);
     }
 
     public Result execute(String rawText) {
@@ -63,6 +67,17 @@ public final class CommandEngine {
         if (containsAny(text, "avanca", "avancar")) return media(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, "Avançando.");
         if (containsAny(text, "retrocede", "retroceder")) return media(KeyEvent.KEYCODE_MEDIA_REWIND, "Retrocedendo.");
 
+        Result tvResult = handleTv(text);
+        if (tvResult.handled) return tvResult;
+
+        String installName = extractInstallName(text);
+        if (installName != null) {
+            boolean opened = store.search(installName);
+            return opened
+                    ? Result.ok("Abrindo " + installName + " na Play Store.")
+                    : Result.fail("Não consegui abrir a Play Store para procurar " + installName + ".");
+        }
+
         if (text.equals("home") || containsAny(text, "inicio", "tela inicial", "fechar aplicativo", "fecha aplicativo", "sair do aplicativo", "sai do aplicativo")) {
             Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(home);
@@ -88,6 +103,32 @@ public final class CommandEngine {
         return Result.unhandled();
     }
 
+    private Result handleTv(String text) {
+        if (containsAny(text, "canal acima", "canal pra cima", "canal para cima", "sobe canal", "subir canal", "proximo canal")) {
+            TvChannelController.Result r = tv.step(1);
+            return r.success ? Result.ok(r.message) : Result.fail(r.message);
+        }
+        if (containsAny(text, "canal abaixo", "canal pra baixo", "canal para baixo", "desce canal", "descer canal", "canal anterior")) {
+            TvChannelController.Result r = tv.step(-1);
+            return r.success ? Result.ok(r.message) : Result.fail(r.message);
+        }
+
+        Matcher channel = Pattern.compile("(?:^|\\s)canal\\s+(\\d{1,3})(?:\\s+(\\d{1,2}))?$").matcher(text);
+        if (channel.find()) {
+            String requested = channel.group(1);
+            if (channel.group(2) != null) requested += "." + channel.group(2);
+            TvChannelController.Result r = tv.tuneByNumber(requested);
+            return r.success ? Result.ok(r.message) : Result.fail(r.message);
+        }
+
+        if (text.equals("tv") || text.equals("televisao") || text.equals("tv ao vivo") ||
+                startsWithAny(text, "vai pra tv", "vai para tv", "abre tv", "abrir tv", "modo tv", "coloca tv")) {
+            TvChannelController.Result r = tv.openLiveTv();
+            return r.success ? Result.ok(r.message) : Result.fail(r.message);
+        }
+        return Result.unhandled();
+    }
+
     private Result handleVolume(String text) {
         if (!containsAny(text, "volume", "som")) return Result.unhandled();
         if (audio == null) return Result.fail("Controle de volume indisponível.");
@@ -96,14 +137,14 @@ public final class CommandEngine {
         if (containsAny(text, "abaixa", "abaixar", "baixa", "diminuir", "diminui", "menos")) {
             for (int i = 0; i < Math.max(1, number); i++) {
                 audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER,
-                        i == number - 1 ? AudioManager.FLAG_SHOW_UI : 0);
+                        i == Math.max(1, number) - 1 ? AudioManager.FLAG_SHOW_UI : 0);
             }
             return Result.ok("Volume reduzido em " + Math.max(1, number) + ".");
         }
         if (containsAny(text, "aumenta", "aumentar", "sobe", "subir", "mais")) {
             for (int i = 0; i < Math.max(1, number); i++) {
                 audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE,
-                        i == number - 1 ? AudioManager.FLAG_SHOW_UI : 0);
+                        i == Math.max(1, number) - 1 ? AudioManager.FLAG_SHOW_UI : 0);
             }
             return Result.ok("Volume aumentado em " + Math.max(1, number) + ".");
         }
@@ -123,6 +164,21 @@ public final class CommandEngine {
         audio.dispatchMediaKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0));
         audio.dispatchMediaKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0));
         return Result.ok(message);
+    }
+
+    private String extractInstallName(String text) {
+        String[] prefixes = {
+                "instala ", "instalar ", "instale ", "baixa app ", "baixar app ",
+                "baixa aplicativo ", "baixar aplicativo "
+        };
+        for (String prefix : prefixes) {
+            if (text.startsWith(prefix)) {
+                String value = text.substring(prefix.length()).trim();
+                value = value.replaceFirst("^(o|a)?\\s*(app|aplicativo)?\\s*", "").trim();
+                if (!value.isEmpty()) return value;
+            }
+        }
+        return null;
     }
 
     private String extractAppName(String text) {
