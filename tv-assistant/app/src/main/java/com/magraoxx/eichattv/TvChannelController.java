@@ -1,10 +1,7 @@
 package com.magraoxx.eichattv;
 
-import android.Manifest;
-import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.media.tv.TvContract;
 import android.net.Uri;
@@ -42,12 +39,18 @@ public final class TvChannelController {
         this.context = context.getApplicationContext();
     }
 
-    public boolean hasPermission() {
-        return context.checkSelfPermission(Manifest.permission.READ_TV_LISTINGS) == PackageManager.PERMISSION_GRANTED;
+    public boolean canReadChannels() {
+        try (Cursor c = context.getContentResolver().query(
+                TvContract.Channels.CONTENT_URI,
+                new String[]{TvContract.Channels._ID},
+                null, null, null)) {
+            return c != null;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     public List<Channel> listChannels() {
-        if (!hasPermission()) return Collections.emptyList();
         List<Channel> out = new ArrayList<>();
         String[] projection = new String[] {
                 TvContract.Channels._ID,
@@ -78,26 +81,23 @@ public final class TvChannelController {
     }
 
     public Result openLiveTv() {
-        try {
-            Intent category = new Intent(Intent.ACTION_MAIN)
-                    .addCategory(Intent.CATEGORY_APP_TV)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (category.resolveActivity(context.getPackageManager()) != null) {
-                context.startActivity(category);
-                return new Result(true, "Abrindo TV ao vivo.");
-            }
-        } catch (Throwable ignored) { }
-
         List<Channel> channels = listChannels();
         if (!channels.isEmpty()) return tune(channels.get(0));
-        if (!hasPermission()) return new Result(false, "Preciso da permissão de canais de TV na configuração inicial.");
-        return new Result(false, "A TCL não expôs os canais ao aplicativo.");
+
+        try {
+            Intent view = new Intent(Intent.ACTION_VIEW, TvContract.Channels.CONTENT_URI)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(view);
+            return new Result(true, "Abrindo TV ao vivo.");
+        } catch (Throwable ignored) {
+            return new Result(false, "A TCL não expôs a TV ao vivo para aplicativos de terceiros.");
+        }
     }
 
     public Result tuneByNumber(String requested) {
-        if (!hasPermission()) return new Result(false, "Preciso da permissão de canais de TV na configuração inicial.");
         String target = normalizeNumber(requested);
         List<Channel> channels = listChannels();
+        if (channels.isEmpty()) return new Result(false, "A TCL não expôs a lista de canais ao aplicativo.");
         for (Channel channel : channels) {
             if (normalizeNumber(channel.number).equals(target)) return tune(channel);
         }
@@ -108,7 +108,6 @@ public final class TvChannelController {
     }
 
     public Result step(int direction) {
-        if (!hasPermission()) return new Result(false, "Preciso da permissão de canais de TV na configuração inicial.");
         List<Channel> channels = listChannels();
         if (channels.isEmpty()) return new Result(false, "A TCL não expôs a lista de canais.");
 
