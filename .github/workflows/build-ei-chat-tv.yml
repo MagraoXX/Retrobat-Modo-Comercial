@@ -52,19 +52,19 @@ jobs:
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
       - name: Prepare direct APK
-        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste20.apk
+        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste21.apk
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: EiChatTV-APK
-          path: EiChat-Teste20.apk
+          path: EiChat-Teste21.apk
           if-no-files-found: error
       - name: Publish direct APK on GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view ei-chat-teste20 >/dev/null 2>&1; then
-            gh release upload ei-chat-teste20 EiChat-Teste20.apk --clobber
+          if gh release view ei-chat-teste21 >/dev/null 2>&1; then
+            gh release upload ei-chat-teste21 EiChat-Teste21.apk --clobber
           else
-            gh release create ei-chat-teste20 EiChat-Teste20.apk --title "Ei Chat - Teste 20" --notes "Teste 20: nova sobreposição de jogo do Ei Chat. Painel compacto na parte inferior, anel azul de voz, transcrição do usuário, resposta separada, estados de ouvir e analisar e microfone à direita. Mantém visão contextual e reconhecimento musical acústico."
+            gh release create ei-chat-teste21 EiChat-Teste21.apk --title "Ei Chat - Teste 21" --notes "Teste 21: gerenciamento de conta ChatGPT. Adiciona Gerenciar conta, Trocar conta e Sair da conta, limpando os tokens locais sem reinstalar o app e permitindo autenticar outra conta. Mantém overlay, visão contextual e reconhecimento musical."
           fi
