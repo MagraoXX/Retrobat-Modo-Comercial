@@ -31,6 +31,7 @@ public class MainActivity extends Activity {
     private ChatGptAuth auth;
     private SpeechRecognizer speech;
     private boolean pending, audioRetry;
+    private int voiceRetryCount;
     private long lastBackAt;
 
     @Override public void onCreate(Bundle b) {
@@ -129,7 +130,7 @@ public class MainActivity extends Activity {
         input = new EditText(this); input.setHint("Pergunte alguma coisa"); input.setHintTextColor(Color.rgb(160, 160, 160)); input.setTextColor(Color.WHITE); input.setTextSize(17);
         input.setBackgroundColor(Color.TRANSPARENT); input.setPadding(dp(8), dp(4), dp(8), dp(4)); input.setMaxLines(4); input.setMinLines(1); input.setFocusable(true);
         composer.addView(input, new LinearLayout.LayoutParams(0, -2, 1f));
-        listen = button("🎤", Color.rgb(66, 66, 66), v -> { audioRetry = false; startListening(); });
+        listen = button("🎤", Color.rgb(66, 66, 66), v -> { audioRetry = false; voiceRetryCount = 0; startListening(); });
         LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(dp(58), dp(54)); vlp.setMargins(dp(8), 0, dp(6), 0); composer.addView(listen, vlp);
         Button send = button("↑", Color.rgb(245, 245, 245), v -> sendTyped()); send.setTextColor(Color.BLACK);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(58), dp(54)); composer.addView(send, slp);
@@ -173,7 +174,7 @@ public class MainActivity extends Activity {
         caption.setText("Diagnóstico • captura direta"); micText.setText("● AudioRecord direto");
         appendAssistant(TvMicrophone.report(this) + "\n\nTestando 2,5 s do microfone interno… fale agora.");
         new AiVoiceRecorder(this).probeBuiltIn((ok, report) -> runOnUiThread(() -> {
-            appendAssistant(TvMicrophone.report(this) + "\nReconhecimento Android: " + (SpeechRecognizer.isRecognitionAvailable(this) ? "disponível" : "indisponível") + "\nChatGPT: " + auth.accountLabel() + "\n\n" + report);
+            appendAssistant(TvMicrophone.report(this) + "\nReconhecimento Android: " + (SpeechRecognizer.isRecognitionAvailable(this) ? "disponível" : "indisponível") + "\n" + VoiceRecognizerHelper.diagnostic(this) + "\nChatGPT: " + auth.accountLabel() + "\n\n" + report);
             micText.setText(ok ? "● captura direta OK" : "● captura direta falhou"); caption.setText("Ei Chat");
         }));
     }
@@ -250,22 +251,71 @@ public class MainActivity extends Activity {
         if (!auth.isConnected()) { connectChatGpt(); return; }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { pending = true; requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC); return; }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) { caption.setText("Ei Chat • voz indisponível"); appendAssistant("Esta TV não disponibilizou um serviço de reconhecimento de voz para aplicativos."); return; }
-        if (tts != null) tts.stop(); AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (tts != null) tts.stop();
+        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
         if (am != null) try { am.setMode(AudioManager.MODE_NORMAL); am.setSpeakerphoneOn(false); } catch (Throwable ignored) {}
-        destroySpeech(); speech = SpeechRecognizer.createSpeechRecognizer(this);
+        destroySpeech();
+        speech = VoiceRecognizerHelper.create(this);
+        VoiceRecognizerHelper.record(this, "event", "startListening");
         speech.setRecognitionListener(new RecognitionListener() {
-            public void onReadyForSpeech(Bundle p) { audioRetry = false; caption.setText("Ei Chat • ouvindo"); micText.setText("● ouvindo"); }
-            public void onBeginningOfSpeech() {} public void onRmsChanged(float r) { micText.setText(r > 2 ? "● ouvindo sua voz" : "● microfone ativo"); }
-            public void onBufferReceived(byte[] b) {} public void onEndOfSpeech() { caption.setText("Ei Chat • entendendo"); micText.setText("● entendendo"); }
-            public void onError(int e) {
-                if (e == SpeechRecognizer.ERROR_AUDIO && !audioRetry) { audioRetry = true; caption.setText("Ei Chat • ajustando áudio"); micText.setText("● segunda tentativa"); destroySpeech(); new Handler(Looper.getMainLooper()).postDelayed(() -> startListening(), 650); return; }
-                caption.setText("Ei Chat • erro de voz"); appendAssistant("Reconhecimento de voz: " + speechError(e) + ". Abra Diagnóstico se continuar."); micText.setText("● tente novamente");
+            public void onReadyForSpeech(Bundle p) {
+                audioRetry = false;
+                VoiceRecognizerHelper.record(MainActivity.this, "event", "ready");
+                caption.setText("Ei Chat • ouvindo"); micText.setText("● ouvindo");
             }
-            public void onResults(Bundle b) { ArrayList<String> a = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION); if (a == null || a.isEmpty() || a.get(0).trim().isEmpty()) { onError(SpeechRecognizer.ERROR_NO_MATCH); return; } handle(a.get(0).trim()); }
-            public void onPartialResults(Bundle b) {} public void onEvent(int t, Bundle b) {}
+            public void onBeginningOfSpeech() {
+                VoiceRecognizerHelper.record(MainActivity.this, "event", "speech_started");
+            }
+            public void onRmsChanged(float r) {
+                micText.setText(r > 2 ? "● ouvindo sua voz" : "● microfone ativo");
+            }
+            public void onBufferReceived(byte[] b) {}
+            public void onEndOfSpeech() {
+                VoiceRecognizerHelper.record(MainActivity.this, "event", "speech_ended");
+                caption.setText("Ei Chat • entendendo"); micText.setText("● entendendo");
+            }
+            public void onError(int e) {
+                String code = VoiceRecognizerHelper.errorName(e) + " (" + e + ")";
+                VoiceRecognizerHelper.record(MainActivity.this, "error", code);
+                if (e == SpeechRecognizer.ERROR_AUDIO && !audioRetry) {
+                    audioRetry = true;
+                    caption.setText("Ei Chat • ajustando áudio"); micText.setText("● segunda tentativa");
+                    destroySpeech(); new Handler(Looper.getMainLooper()).postDelayed(() -> startListening(), 650); return;
+                }
+                if ((e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && voiceRetryCount < 1) {
+                    voiceRetryCount++;
+                    caption.setText("Ei Chat • ouvindo novamente"); micText.setText("● pode falar");
+                    destroySpeech(); new Handler(Looper.getMainLooper()).postDelayed(() -> startListening(), 450); return;
+                }
+                caption.setText("Ei Chat • erro de voz");
+                appendAssistant("Reconhecimento de voz: " + speechError(e) + " [" + code + "]. Abra Diagnóstico se continuar.");
+                micText.setText("● tente novamente");
+            }
+            public void onResults(Bundle b) {
+                ArrayList<String> a = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (a == null || a.isEmpty() || a.get(0).trim().isEmpty()) { onError(SpeechRecognizer.ERROR_NO_MATCH); return; }
+                String result = a.get(0).trim();
+                VoiceRecognizerHelper.record(MainActivity.this, "result", result);
+                voiceRetryCount = 0;
+                handle(result);
+            }
+            public void onPartialResults(Bundle b) {
+                ArrayList<String> a = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (a != null && !a.isEmpty() && !a.get(0).trim().isEmpty()) {
+                    String partial = a.get(0).trim();
+                    VoiceRecognizerHelper.record(MainActivity.this, "partial", partial);
+                    micText.setText("● " + (partial.length() > 32 ? partial.substring(0, 32) + "…" : partial));
+                }
+            }
+            public void onEvent(int t, Bundle b) {}
         });
-        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH); i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM); i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR"); i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR"); i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true); i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3); i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false);
-        try { speech.startListening(i); } catch (Throwable e) { caption.setText("Ei Chat • erro de voz"); appendAssistant("Não foi possível iniciar o microfone: " + e.getMessage()); }
+        Intent i = VoiceRecognizerHelper.intent();
+        try { speech.startListening(i); }
+        catch (Throwable e) {
+            VoiceRecognizerHelper.record(this, "error", "start_exception: " + e.getMessage());
+            caption.setText("Ei Chat • erro de voz");
+            appendAssistant("Não foi possível iniciar o microfone: " + e.getMessage());
+        }
     }
     private void destroySpeech() { if (speech != null) { try { speech.cancel(); } catch (Throwable ignored) {} try { speech.destroy(); } catch (Throwable ignored) {} speech = null; } }
     private void handle(String q) {
