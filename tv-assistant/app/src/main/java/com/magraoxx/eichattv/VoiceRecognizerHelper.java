@@ -11,11 +11,12 @@ import android.util.Log;
 public final class VoiceRecognizerHelper {
     private static final String PREFS = "ei_chat_voice";
     private static final String TAG = "EiChatVoice";
+    private static final String VOICE_RECOGNITION_SERVICE = "voice_recognition_service";
 
     private VoiceRecognizerHelper() {}
 
     public static SpeechRecognizer create(Context context) {
-        String flat = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.VOICE_RECOGNITION_SERVICE);
+        String flat = Settings.Secure.getString(context.getContentResolver(), VOICE_RECOGNITION_SERVICE);
         if (flat != null && !flat.trim().isEmpty()) {
             ComponentName component = ComponentName.unflattenFromString(flat.trim());
             if (component != null) {
