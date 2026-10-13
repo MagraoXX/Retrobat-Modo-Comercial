@@ -75,9 +75,17 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
+        getContext().getSharedPreferences("ei_chat_runtime", Context.MODE_PRIVATE)
+                .edit().putBoolean("session_active", true).putLong("session_opened_at", System.currentTimeMillis()).apply();
         if (title == null) setContentView(onCreateContentView());
         continuous = args != null && args.getBoolean("continuous", false);
-        startListening();
+        String initial = args == null ? "" : args.getString("initial_query", "").trim();
+        if (!initial.isEmpty()) {
+            set("Ei Chat • ativado", "Comando recebido: “" + initial + "”", Color.rgb(120, 185, 255));
+            main.postDelayed(() -> handle(initial), 120);
+        } else {
+            startListening();
+        }
     }
 
     private void set(String t, String s, int color) {
@@ -165,6 +173,10 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
         return n.replaceAll("[^a-z0-9 ]", " ").replaceAll("\\s+", " ").trim();
     }
     private void destroySpeech() { if (speech != null) { try { speech.cancel(); } catch (Throwable ignored) {} try { speech.destroy(); } catch (Throwable ignored) {} speech = null; } }
-    @Override public void onHide() { destroySpeech(); if (tts != null) try { tts.stop(); } catch (Throwable ignored) {} super.onHide(); }
-    @Override public void onDestroy() { destroySpeech(); if (tts != null) tts.shutdown(); super.onDestroy(); }
+    private void markSessionClosed() {
+        getContext().getSharedPreferences("ei_chat_runtime", Context.MODE_PRIVATE)
+                .edit().putBoolean("session_active", false).putLong("session_closed_at", System.currentTimeMillis()).apply();
+    }
+    @Override public void onHide() { markSessionClosed(); destroySpeech(); if (tts != null) try { tts.stop(); } catch (Throwable ignored) {} super.onHide(); }
+    @Override public void onDestroy() { markSessionClosed(); destroySpeech(); if (tts != null) tts.shutdown(); super.onDestroy(); }
 }
