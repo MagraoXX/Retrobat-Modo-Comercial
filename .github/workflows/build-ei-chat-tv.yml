@@ -27,6 +27,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Restore stable debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: ei-chat-debug-keystore-v1
       - name: Build debug APK
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
