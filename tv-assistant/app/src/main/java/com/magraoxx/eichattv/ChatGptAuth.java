@@ -22,12 +22,16 @@ public final class ChatGptAuth {
  public boolean isConnected(){JSONObject p=profile();return p!=null&&p.optString("client_id").startsWith("oaiapp_")&&p.optString("scope").contains("chatgpt.tokens.use.direct");}
  public String accountLabel(){JSONObject p=profile();if(p==null)return "Não conectado";String e=p.optString("email","");return e.isEmpty()?"ChatGPT conectado":e;}
 
- public void signIn(Callback cb){new Thread(()->{ServerSocket server=null;try{
+ public void signIn(Callback cb){signIn(false,cb);}
+ public void signIn(boolean chooseAccount,Callback cb){new Thread(()->{ServerSocket server=null;try{
    server=openLoopback();server.setSoTimeout(10*60*1000);int port=server.getLocalPort();String redirect="http://127.0.0.1:"+port+"/auth/callback";
    String state=random(32),nonce=random(32),verifier=random(64),challenge=b64url(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII))),host=hostId();
    JSONObject old=profile();String requested=old==null?"dynamic_agent_client":old.optString("client_id","dynamic_agent_client");boolean first="dynamic_agent_client".equals(requested);
    Uri.Builder u=Uri.parse(AUTH).buildUpon().appendQueryParameter("client_id",requested).appendQueryParameter("redirect_uri",redirect).appendQueryParameter("response_type","code").appendQueryParameter("scope",SCOPES).appendQueryParameter("resource",RESOURCE).appendQueryParameter("state",state).appendQueryParameter("nonce",nonce).appendQueryParameter("code_challenge_method","S256").appendQueryParameter("code_challenge",challenge).appendQueryParameter("ext_agent_host_id",host);
-   if(first){u.appendQueryParameter("agent_name_hint",AGENT);u.appendQueryParameter("prompt","consent");}else if(old!=null){String id=old.optString("id_token","");if(!id.isEmpty())u.appendQueryParameter("id_token_hint",id);String e=old.optString("email","");if(!e.isEmpty())u.appendQueryParameter("login_hint",e);}
+   if(first)u.appendQueryParameter("agent_name_hint",AGENT);
+   if(chooseAccount){u.appendQueryParameter("prompt","consent select_account");}
+   else if(first){u.appendQueryParameter("prompt","consent");}
+   else if(old!=null){String id=old.optString("id_token","");if(!id.isEmpty())u.appendQueryParameter("id_token_hint",id);String e=old.optString("email","");if(!e.isEmpty())u.appendQueryParameter("login_hint",e);}
    Intent i=new Intent(Intent.ACTION_VIEW,u.build());i.addCategory(Intent.CATEGORY_BROWSABLE);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(i);
    Map<String,String> q=waitForCallback(server,state);
    if(q.containsKey("error"))throw new Exception("Autorização não concluída: "+q.get("error")+(q.get("error_description")==null?"":" — "+q.get("error_description")));
