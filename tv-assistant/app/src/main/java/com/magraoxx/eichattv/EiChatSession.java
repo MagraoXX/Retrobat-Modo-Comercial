@@ -1,6 +1,7 @@
 package com.magraoxx.eichattv;
 
 import android.Manifest;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -52,7 +53,8 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
     }
 
     @Override public View onCreateContentView() {
-        Window w = getWindow();
+        Dialog d = getWindow();
+        Window w = d == null ? null : d.getWindow();
         if (w != null) {
             w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             w.setGravity(Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
