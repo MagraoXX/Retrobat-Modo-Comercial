@@ -1,24 +1,14 @@
 package com.magraoxx.eichattv;
 
 import android.content.Context;
+import org.json.*;
+import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;
 
 public final class OpenAiClient {
-    public interface Callback {
-        void onSuccess(String text);
-        void onError(String message);
-    }
-
-    private final ChatGptAuth auth;
-
-    public OpenAiClient(Context context) {
-        auth = new ChatGptAuth(context);
-    }
-
-    public void ask(String prompt, Callback callback) {
-        if (!auth.isConnected()) {
-            callback.onError("Conecte sua conta ChatGPT no Ei Chat TV primeiro.");
-            return;
-        }
-        callback.onError("Conta ChatGPT conectada. A chamada de IA será habilitada depois do teste do fluxo de login nesta TV.");
-    }
+ public interface Callback{void onSuccess(String text);void onError(String message);} private final ChatGptAuth auth;
+ public OpenAiClient(Context c){auth=new ChatGptAuth(c);}
+ public void transcribe(File wav,Callback cb){new Thread(()->{try{String token=auth.accessToken();String boundary="----EiChat"+System.currentTimeMillis();HttpURLConnection c=(HttpURLConnection)new URL("https://api.openai.com/v1/audio/transcriptions").openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(15000);c.setReadTimeout(60000);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary);try(OutputStream o=c.getOutputStream()){part(o,boundary,"model",null,"gpt-4o-mini-transcribe".getBytes(StandardCharsets.UTF_8));part(o,boundary,"language",null,"pt".getBytes(StandardCharsets.UTF_8));part(o,boundary,"file","voice.wav",readFile(wav));o.write(("--"+boundary+"--\r\n").getBytes(StandardCharsets.UTF_8));}int s=c.getResponseCode();String body=read(c,s>=400);if(s<200||s>=300)throw new Exception(apiError(s,body));JSONObject j=new JSONObject(body);String text=j.optString("text","").trim();if(text.isEmpty())throw new Exception("A IA não encontrou fala no áudio.");cb.onSuccess(text);}catch(Throwable e){cb.onError("Transcrição IA: "+safe(e));}},"ei-chat-stt").start();}
+ public void ask(String prompt,Callback cb){new Thread(()->{try{String token=auth.accessToken();JSONObject req=new JSONObject();req.put("model","gpt-6-luna");req.put("input",prompt);req.put("instructions","Você é Ei Chat, assistente de uma Android TV. Responda em português do Brasil, de forma curta e natural para ser falada em uma televisão.");HttpURLConnection c=(HttpURLConnection)new URL("https://api.openai.com/v1/responses").openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(15000);c.setReadTimeout(60000);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json");c.getOutputStream().write(req.toString().getBytes(StandardCharsets.UTF_8));int s=c.getResponseCode();String body=read(c,s>=400);if(s<200||s>=300)throw new Exception(apiError(s,body));JSONObject j=new JSONObject(body);String out=j.optString("output_text","");if(out.isEmpty()){JSONArray a=j.optJSONArray("output");if(a!=null)for(int i=0;i<a.length();i++){JSONArray ct=a.getJSONObject(i).optJSONArray("content");if(ct!=null)for(int k=0;k<ct.length();k++){String t=ct.getJSONObject(k).optString("text","");if(!t.isEmpty())out+=t;}}}if(out.trim().isEmpty())throw new Exception("A IA respondeu sem texto.");cb.onSuccess(out.trim());}catch(Throwable e){cb.onError("IA: "+safe(e));}},"ei-chat-ai").start();}
+ private static void part(OutputStream o,String b,String name,String file,byte[] data)throws Exception{String h="--"+b+"\r\nContent-Disposition: form-data; name=\""+name+"\""+(file==null?"":"; filename=\""+file+"\"\r\nContent-Type: audio/wav")+"\r\n\r\n";o.write(h.getBytes(StandardCharsets.UTF_8));o.write(data);o.write("\r\n".getBytes(StandardCharsets.UTF_8));}
+ private static byte[] readFile(File f)throws Exception{return java.nio.file.Files.readAllBytes(f.toPath());}private static String read(HttpURLConnection c,boolean err)throws Exception{InputStream in=err?c.getErrorStream():c.getInputStream();if(in==null)return "";BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8));StringBuilder b=new StringBuilder();String x;while((x=r.readLine())!=null)b.append(x);return b.toString();}private static String apiError(int s,String body){try{return "OpenAI "+s+": "+new JSONObject(body).optJSONObject("error").optString("message",body);}catch(Exception e){return "OpenAI "+s;}}private static String safe(Throwable t){return t.getMessage()==null?t.getClass().getSimpleName():t.getMessage();}
 }
