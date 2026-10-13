@@ -39,6 +39,30 @@ public final class OpenAiClient {
         run(prompt, null, null, false, cb);
     }
 
+    public void askConversation(JSONArray messages, Callback cb) {
+        new Thread(() -> {
+            try {
+                String token = auth.accessToken();
+                String model = pickModel(token);
+                JSONObject req = new JSONObject();
+                req.put("model", model);
+                req.put("store", false);
+                req.put("stream", true);
+                req.put("instructions",
+                        "Você é Ei Chat, assistente pessoal em uma Android/Google TV. " +
+                        "Converse em português do Brasil de forma natural, clara e útil. " +
+                        "Mantenha o contexto das mensagens anteriores, faça respostas adequadas para leitura na TV e para voz, " +
+                        "e não repita informações que já estejam claras na conversa.");
+                JSONArray safeMessages = messages == null ? new JSONArray() : new JSONArray(messages.toString());
+                if (safeMessages.length() == 0) throw new Exception("A conversa está vazia.");
+                req.put("input", safeMessages);
+                cb.onSuccess(sendStreaming(token, req));
+            } catch (Throwable e) {
+                cb.onError("IA: " + safe(e));
+            }
+        }, "ei-chat-conversation").start();
+    }
+
     public void askWithScreen(String prompt, Bitmap screenshot, String screenContext, Callback cb) {
         run(prompt, screenshot, screenContext, true, cb);
     }
