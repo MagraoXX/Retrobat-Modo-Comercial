@@ -43,6 +43,8 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
     private CommandEngine engine;
     private OpenAiClient ai;
     private ChatGptAuth auth;
+    private MusicRecognitionClient music;
+    private AiVoiceRecorder audioRecorder;
 
     private Bitmap screenBitmap;
     private String screenContext = "";
@@ -56,6 +58,8 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
         engine = new CommandEngine(c);
         ai = new OpenAiClient(c);
         auth = new ChatGptAuth(c);
+        music = new MusicRecognitionClient(c);
+        audioRecorder = new AiVoiceRecorder(c);
     }
 
     private int dp(int v) { return Math.round(v * getContext().getResources().getDisplayMetrics().density); }
@@ -247,6 +251,10 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
         }
 
         set("Você", q, Color.rgb(120, 185, 255));
+        if (isMusicRecognitionRequest(n)) {
+            recognizeMusic();
+            return;
+        }
         if (isVisionRequest(n)) {
             analyzeCurrentScreen(q);
             return;
@@ -273,6 +281,59 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
                 });
             }
         });
+    }
+
+    private void recognizeMusic() {
+        destroySpeech();
+        if (tts != null) try { tts.stop(); } catch (Throwable ignored) {}
+        set("Ei Chat • música", "Vou ouvir alguns segundos da música…", Color.rgb(120, 185, 255));
+        audioRecorder.recordMusic(new AiVoiceRecorder.Callback() {
+            @Override public void onRecorded(java.io.File wav, String route) {
+                getContext().getMainExecutor().execute(() -> set("Ei Chat • música", "Áudio capturado. Identificando a faixa…", Color.rgb(190, 150, 255)));
+                music.recognize(wav, new MusicRecognitionClient.Callback() {
+                    @Override public void onMatch(String title, String artist, String album, String link) {
+                        getContext().getMainExecutor().execute(() -> {
+                            StringBuilder b = new StringBuilder();
+                            if (!title.isEmpty()) b.append(title);
+                            if (!artist.isEmpty()) b.append(b.length() == 0 ? artist : " — " + artist);
+                            if (!album.isEmpty()) b.append(". Álbum: ").append(album);
+                            String answer = b.length() == 0 ? "Encontrei a música, mas o serviço não retornou título e artista." : "É " + b.toString() + ".";
+                            set("Ei Chat • música encontrada", answer, Color.rgb(130, 220, 165));
+                            speak(answer, afterReply());
+                        });
+                    }
+                    @Override public void onNoMatch() {
+                        getContext().getMainExecutor().execute(() -> {
+                            String answer = "Não consegui reconhecer essa música nesse trecho. Deixe a música tocar mais limpa e tente novamente.";
+                            set("Ei Chat • música", answer, Color.rgb(255, 180, 80));
+                            speak(answer, afterReply());
+                        });
+                    }
+                    @Override public void onError(String message) {
+                        getContext().getMainExecutor().execute(() -> {
+                            set("Ei Chat • música", message, Color.rgb(255, 105, 105));
+                            speak(message, afterReply());
+                        });
+                    }
+                });
+            }
+            @Override public void onError(String error) {
+                getContext().getMainExecutor().execute(() -> {
+                    String message = "Não consegui ouvir a música: " + error;
+                    set("Ei Chat • música", message, Color.rgb(255, 105, 105));
+                    speak(message, afterReply());
+                });
+            }
+        });
+    }
+
+    private static boolean isMusicRecognitionRequest(String n) {
+        if (n == null) return false;
+        return n.contains("que musica e essa") || n.contains("qual musica e essa") ||
+                n.contains("que musica esta tocando") || n.contains("qual musica esta tocando") ||
+                n.contains("que som e esse") || n.contains("qual som e esse") ||
+                n.contains("descobre essa musica") || n.contains("descobrir essa musica") ||
+                n.contains("reconhece essa musica") || n.contains("reconhecer essa musica");
     }
 
     private void analyzeCurrentScreen(String query) {
