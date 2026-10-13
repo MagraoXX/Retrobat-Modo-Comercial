@@ -46,6 +46,15 @@ public final class CommandEngine {
         text = text.replaceFirst("^(ei chat|hey chat|chat)\\s+", "").trim();
         if (text.isEmpty()) return Result.unhandled();
 
+        if (containsAny(text, "que horas sao", "que hora e", "que horas e", "qual e a hora", "me diz a hora")) {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("HH:mm", new java.util.Locale("pt", "BR"));
+            return Result.ok("Agora são " + f.format(new java.util.Date()) + ".");
+        }
+        if (containsAny(text, "que dia e hoje", "qual a data de hoje", "data de hoje")) {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("dd 'de' MMMM 'de' yyyy", new java.util.Locale("pt", "BR"));
+            return Result.ok("Hoje é " + f.format(new java.util.Date()) + ".");
+        }
+
         Result volume = handleVolume(text);
         if (volume.handled) return volume;
 
