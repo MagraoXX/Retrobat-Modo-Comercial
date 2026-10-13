@@ -36,19 +36,19 @@ jobs:
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
       - name: Prepare direct APK
-        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste16.apk
+        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste17.apk
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: EiChatTV-APK
-          path: EiChat-Teste16.apk
+          path: EiChat-Teste17.apk
           if-no-files-found: error
       - name: Publish direct APK on GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view ei-chat-teste16 >/dev/null 2>&1; then
-            gh release upload ei-chat-teste16 EiChat-Teste16.apk --clobber
+          if gh release view ei-chat-teste17 >/dev/null 2>&1; then
+            gh release upload ei-chat-teste17 EiChat-Teste17.apk --clobber
           else
-            gh release create ei-chat-teste16 EiChat-Teste16.apk --title "Ei Chat - Teste 16" --notes "Teste 16: corrige registro do VoiceInteractionService no Android TV adicionando RecognitionService obrigatório, mantendo a interface ChatGPT e o painel de voz compacto."
+            gh release create ei-chat-teste17 EiChat-Teste17.apk --title "Ei Chat - Teste 17" --notes "Teste 17: adiciona escuta contínua da palavra de ativação 'Ei Chat'/'Chat' pelo VoiceInteractionService. Ao detectar a frase, abre o painel compacto e mantém conversa contínua até 'encerrar chamada'."
           fi
