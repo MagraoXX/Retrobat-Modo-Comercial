@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - chatgpt-tv-assistant
+      - ei-chat-teste24-dev
     paths:
       - 'tv-assistant/**'
       - '.github/workflows/build-ei-chat-tv.yml'
@@ -52,19 +53,20 @@ jobs:
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
       - name: Prepare direct APK
-        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste23.apk
+        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste24.apk
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: EiChatTV-APK
-          path: EiChat-Teste23.apk
+          path: EiChat-Teste24.apk
           if-no-files-found: error
       - name: Publish direct APK on GitHub Release
+        if: github.ref == 'refs/heads/chatgpt-tv-assistant'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view ei-chat-teste23 >/dev/null 2>&1; then
-            gh release upload ei-chat-teste23 EiChat-Teste23.apk --clobber
+          if gh release view ei-chat-teste24 >/dev/null 2>&1; then
+            gh release upload ei-chat-teste24 EiChat-Teste24.apk --clobber
           else
-            gh release create ei-chat-teste23 EiChat-Teste23.apk --title "Ei Chat - Teste 23" --notes "Teste 23: correção focada no reconhecimento de voz. Usa explicitamente o serviço de voz configurado na TCL, amplia a janela de escuta, registra resultados parciais e códigos de erro, faz uma nova tentativa automática quando não entende a fala e adiciona diagnóstico detalhado. Mantém todos os recursos do Teste 22."
+            gh release create ei-chat-teste24 EiChat-Teste24.apk --title "Ei Chat - Teste 24" --notes "Teste 24: interface principal refeita para uma experiência muito mais próxima do ChatGPT na TV. Adiciona histórico local persistente de conversas, contexto entre mensagens, barra lateral de chats, composer central, modo de chamada de voz em tela cheia com transcrição parcial, estados Ouvindo/Pensando/Respondendo, silenciar/encerrar e retomada automática da escuta. Mantém correções de voz e recursos do Teste 23."
           fi
