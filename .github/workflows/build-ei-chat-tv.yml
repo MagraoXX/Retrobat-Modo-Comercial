@@ -52,19 +52,19 @@ jobs:
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
       - name: Prepare direct APK
-        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste19.apk
+        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste20.apk
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: EiChatTV-APK
-          path: EiChat-Teste19.apk
+          path: EiChat-Teste20.apk
           if-no-files-found: error
       - name: Publish direct APK on GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view ei-chat-teste19 >/dev/null 2>&1; then
-            gh release upload ei-chat-teste19 EiChat-Teste19.apk --clobber
+          if gh release view ei-chat-teste20 >/dev/null 2>&1; then
+            gh release upload ei-chat-teste20 EiChat-Teste20.apk --clobber
           else
-            gh release create ei-chat-teste19 EiChat-Teste19.apk --title "Ei Chat - Teste 19" --notes "Teste 19: reconhecimento musical acústico. O comando 'que música é essa?' grava cerca de 12 segundos pelo microfone da TV/controle e consulta um serviço de identificação de músicas; mantém a visão contextual do Teste 18. A captura interna/HDMI depende das permissões e limitações da TV."
+            gh release create ei-chat-teste20 EiChat-Teste20.apk --title "Ei Chat - Teste 20" --notes "Teste 20: nova sobreposição de jogo do Ei Chat. Painel compacto na parte inferior, anel azul de voz, transcrição do usuário, resposta separada, estados de ouvir e analisar e microfone à direita. Mantém visão contextual e reconhecimento musical acústico."
           fi
