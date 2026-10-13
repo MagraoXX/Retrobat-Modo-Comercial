@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
 
         Space spacer = new Space(this); side.addView(spacer, new LinearLayout.LayoutParams(1, wide ? 0 : dp(8), wide ? 1f : 0f));
         accountState = text("ChatGPT", 13); accountState.setTextColor(Color.rgb(185, 185, 185)); side.addView(accountState, new LinearLayout.LayoutParams(-1, -2));
-        account = button("Conectar ChatGPT", Color.rgb(45, 45, 45), v -> connectChatGpt());
+        account = button("Conectar ChatGPT", Color.rgb(45, 45, 45), v -> accountAction());
         LinearLayout.LayoutParams acp = new LinearLayout.LayoutParams(-1, dp(54)); acp.setMargins(0, dp(6), 0, 0); side.addView(account, acp);
 
         LinearLayout main = new LinearLayout(this);
@@ -177,16 +177,62 @@ public class MainActivity extends Activity {
         }));
     }
     private void refreshAccount() {
-        boolean ok = auth.isConnected(); account.setText(ok ? "✓ ChatGPT conectado" : "Conectar ChatGPT"); accountState.setText(ok ? auth.accountLabel() : "ChatGPT • não conectado");
+        boolean ok = auth.isConnected(); account.setText(ok ? "Gerenciar conta" : "Conectar ChatGPT"); accountState.setText(ok ? "ChatGPT • " + auth.accountLabel() : "ChatGPT • não conectado");
         listen.setEnabled(ok); listen.setAlpha(ok ? 1f : .45f); micText.setText(ok ? "● IA pronta" : "● conectar ChatGPT");
     }
-    private void connectChatGpt() {
-        caption.setText("Conectando ao ChatGPT"); appendAssistant("Abrindo o login. Autorize no navegador e volte ao Ei Chat."); account.setEnabled(false);
-        auth.signIn(new ChatGptAuth.Callback() {
-            public void onSuccess(String m) { runOnUiThread(() -> { account.setEnabled(true); refreshAccount(); appendAssistant(m + "\nAgora você pode digitar ou usar o microfone."); listen.requestFocus(); }); }
-            public void onError(String e) { runOnUiThread(() -> { account.setEnabled(true); caption.setText("Ei Chat"); appendAssistant(e); micText.setText("● conexão necessária"); account.requestFocus(); }); }
+    private void accountAction() {
+        if (!auth.isConnected()) { connectChatGpt(false); return; }
+        final String label = auth.accountLabel();
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Conta ChatGPT")
+                .setMessage(label)
+                .setItems(new String[]{"Trocar conta", "Sair da conta", "Cancelar"}, (d, which) -> {
+                    if (which == 0) switchAccount();
+                    else if (which == 1) confirmSignOut();
+                    else d.dismiss();
+                })
+                .show();
+    }
+
+    private void confirmSignOut() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Sair da conta?")
+                .setMessage("O Ei Chat vai apagar desta TV os tokens salvos da conta ChatGPT. Você poderá conectar outra conta depois.")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Sair", (d, w) -> signOutCurrentAccount())
+                .show();
+    }
+
+    private void signOutCurrentAccount() {
+        destroySpeech();
+        auth.signOut();
+        ai = new OpenAiClient(this);
+        refreshAccount();
+        caption.setText("Ei Chat");
+        appendAssistant("Conta ChatGPT desconectada deste Ei Chat. Para usar a IA novamente, conecte uma conta.");
+        account.requestFocus();
+    }
+
+    private void switchAccount() {
+        destroySpeech();
+        auth.signOut();
+        ai = new OpenAiClient(this);
+        refreshAccount();
+        appendAssistant("Conta atual desconectada. Escolha outra conta no navegador.");
+        connectChatGpt(true);
+    }
+
+    private void connectChatGpt() { connectChatGpt(false); }
+    private void connectChatGpt(boolean chooseAccount) {
+        caption.setText(chooseAccount ? "Trocando conta ChatGPT" : "Conectando ao ChatGPT");
+        appendAssistant(chooseAccount ? "Abrindo o seletor de contas. Escolha a conta que deseja usar no Ei Chat." : "Abrindo o login. Autorize no navegador e volte ao Ei Chat.");
+        account.setEnabled(false);
+        auth.signIn(chooseAccount, new ChatGptAuth.Callback() {
+            public void onSuccess(String m) { runOnUiThread(() -> { ai = new OpenAiClient(MainActivity.this); account.setEnabled(true); refreshAccount(); appendAssistant(m + "\nAgora você pode digitar ou usar o microfone."); listen.requestFocus(); }); }
+            public void onError(String e) { runOnUiThread(() -> { account.setEnabled(true); caption.setText("Ei Chat"); refreshAccount(); appendAssistant(e); micText.setText("● conexão necessária"); account.requestFocus(); }); }
         });
     }
+
     private void requestAssistantRole() {
         try {
             if (Build.VERSION.SDK_INT >= 29) {
