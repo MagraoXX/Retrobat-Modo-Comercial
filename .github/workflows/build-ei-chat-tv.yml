@@ -52,19 +52,19 @@ jobs:
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
       - name: Prepare direct APK
-        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste17.apk
+        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste18.apk
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: EiChatTV-APK
-          path: EiChat-Teste17.apk
+          path: EiChat-Teste18.apk
           if-no-files-found: error
       - name: Publish direct APK on GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view ei-chat-teste17 >/dev/null 2>&1; then
-            gh release upload ei-chat-teste17 EiChat-Teste17.apk --clobber
+          if gh release view ei-chat-teste18 >/dev/null 2>&1; then
+            gh release upload ei-chat-teste18 EiChat-Teste18.apk --clobber
           else
-            gh release create ei-chat-teste17 EiChat-Teste17.apk --title "Ei Chat - Teste 17" --notes "Teste 17: adiciona escuta contínua da palavra de ativação 'Ei Chat'/'Chat' pelo VoiceInteractionService. Ao detectar a frase, abre o painel compacto e mantém conversa contínua até 'encerrar chamada'."
+            gh release create ei-chat-teste18 EiChat-Teste18.apk --title "Ei Chat - Teste 18" --notes "Teste 18: adiciona visão contextual da tela. O assistente solicita screenshot e AssistStructure ao abrir, usa imagem + textos visíveis para ajudar em jogos, mapas, filmes, séries e conteúdo da TV, e informa quando a captura estiver bloqueada por HDMI/DRM/app."
           fi
