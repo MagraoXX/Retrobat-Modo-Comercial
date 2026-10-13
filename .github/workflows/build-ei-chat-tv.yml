@@ -52,19 +52,19 @@ jobs:
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
       - name: Prepare direct APK
-        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste22.apk
+        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste23.apk
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: EiChatTV-APK
-          path: EiChat-Teste22.apk
+          path: EiChat-Teste23.apk
           if-no-files-found: error
       - name: Publish direct APK on GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view ei-chat-teste22 >/dev/null 2>&1; then
-            gh release upload ei-chat-teste22 EiChat-Teste22.apk --clobber
+          if gh release view ei-chat-teste23 >/dev/null 2>&1; then
+            gh release upload ei-chat-teste23 EiChat-Teste23.apk --clobber
           else
-            gh release create ei-chat-teste22 EiChat-Teste22.apk --title "Ei Chat - Teste 22" --notes "Teste 22: controle de saída pelo botão Voltar. No aplicativo principal, o primeiro Back avisa e o segundo em até 2 segundos fecha o Ei Chat. A sobreposição continua fechando com um Back e retorna ao jogo ou vídeo. Mantém gerenciamento de conta, overlay, visão contextual e reconhecimento musical."
+            gh release create ei-chat-teste23 EiChat-Teste23.apk --title "Ei Chat - Teste 23" --notes "Teste 23: correção focada no reconhecimento de voz. Usa explicitamente o serviço de voz configurado na TCL, amplia a janela de escuta, registra resultados parciais e códigos de erro, faz uma nova tentativa automática quando não entende a fala e adiciona diagnóstico detalhado. Mantém todos os recursos do Teste 22."
           fi
