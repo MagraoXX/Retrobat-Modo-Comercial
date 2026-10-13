@@ -31,6 +31,7 @@ public class MainActivity extends Activity {
     private ChatGptAuth auth;
     private SpeechRecognizer speech;
     private boolean pending, audioRetry;
+    private long lastBackAt;
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -284,6 +285,17 @@ public class MainActivity extends Activity {
     }
     private void speak(String x) { if (tts != null && x != null && !x.trim().isEmpty()) tts.speak(x, TextToSpeech.QUEUE_FLUSH, null, "ei_chat"); }
 
+    @Override public void onBackPressed() {
+        long now = System.currentTimeMillis();
+        if (now - lastBackAt <= 2000L) {
+            destroySpeech();
+            if (tts != null) try { tts.stop(); } catch (Throwable ignored) {}
+            finishAndRemoveTask();
+            return;
+        }
+        lastBackAt = now;
+        Toast.makeText(this, "Pressione Voltar novamente para sair do Ei Chat", Toast.LENGTH_SHORT).show();
+    }
     @Override public void onRequestPermissionsResult(int c, String[] p, int[] g) { super.onRequestPermissionsResult(c, p, g); if (c == REQ_MIC && g.length > 0 && g[0] == PackageManager.PERMISSION_GRANTED && pending) { pending = false; startListening(); } }
     @Override protected void onResume() { super.onResume(); if (auth != null) refreshAccount(); }
     @Override protected void onDestroy() { destroySpeech(); if (tts != null) tts.shutdown(); super.onDestroy(); }
