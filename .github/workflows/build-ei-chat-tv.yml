@@ -9,6 +9,9 @@ on:
       - '.github/workflows/build-ei-chat-tv.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,9 +34,22 @@ jobs:
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Prepare direct APK
+        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste11.apk
+
+      - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: EiChatTV-APK
-          path: tv-assistant/app/build/outputs/apk/debug/app-debug.apk
+          path: EiChat-Teste11.apk
           if-no-files-found: error
+
+      - name: Publish direct APK on GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view ei-chat-teste11 >/dev/null 2>&1; then
+            gh release upload ei-chat-teste11 EiChat-Teste11.apk --clobber
+          else
+            gh release create ei-chat-teste11 EiChat-Teste11.apk --title "Ei Chat - Teste 11" --notes "APK direto do Ei Chat Teste 11 para Android e Google TV."
+          fi
