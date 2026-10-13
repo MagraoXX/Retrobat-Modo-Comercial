@@ -7,9 +7,11 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.service.voice.VoiceInteractionService;
+import android.service.voice.VoiceInteractionSession;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Locale;
@@ -139,9 +141,11 @@ public class EiChatVoiceInteractionService extends VoiceInteractionService {
 
         Bundle args = new Bundle();
         args.putBoolean("continuous", true);
+        args.putBoolean("request_screen_context", true);
         if (command != null && !command.isEmpty()) args.putString("initial_query", command);
         try {
-            showSession(args, 0);
+            int flags = VoiceInteractionSession.SHOW_WITH_ASSIST | VoiceInteractionSession.SHOW_WITH_SCREENSHOT;
+            showSession(args, flags);
         } catch (Throwable t) {
             noteState("falha ao abrir painel", -103);
             wakeTriggered = false;
