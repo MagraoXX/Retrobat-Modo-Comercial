@@ -6,8 +6,28 @@ import java.io.*;
 
 public final class AiVoiceRecorder {
  public interface Callback { void onRecorded(File wav, String route); void onError(String error); }
+ public interface ProbeCallback { void onResult(boolean ok, String report); }
  private final Context context; private volatile boolean stop;
  public AiVoiceRecorder(Context c){context=c.getApplicationContext();}
+
+ public void probeBuiltIn(ProbeCallback cb){new Thread(()->{AudioRecord r=null;try{
+  int rate=16000,channel=AudioFormat.CHANNEL_IN_MONO,fmt=AudioFormat.ENCODING_PCM_16BIT;
+  int min=Math.max(AudioRecord.getMinBufferSize(rate,channel,fmt),4096);
+  AudioDeviceInfo tv=TvMicrophone.findBuiltIn(context);
+  if(tv==null){cb.onResult(false,"MIC interno não foi exposto pela TCL.");return;}
+  r=new AudioRecord(MediaRecorder.AudioSource.MIC,rate,channel,fmt,min*2);
+  boolean preferred=r.setPreferredDevice(tv);
+  if(r.getState()!=AudioRecord.STATE_INITIALIZED){cb.onResult(false,"AudioRecord não inicializou. MIC interno id "+tv.getId());return;}
+  r.startRecording();
+  if(r.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING){cb.onResult(false,"startRecording falhou. MIC interno id "+tv.getId()+", preferido="+preferred);return;}
+  byte[] buf=new byte[min];long end=System.currentTimeMillis()+2500;long samples=0,sum=0;int peak=0,reads=0;
+  while(System.currentTimeMillis()<end){int n=r.read(buf,0,buf.length);if(n<0)throw new IOException("AudioRecord.read="+n);if(n==0)continue;reads++;for(int i=0;i+1<n;i+=2){short s=(short)((buf[i]&255)|(buf[i+1]<<8));int a=Math.abs((int)s);if(a>peak)peak=a;sum+=(long)s*s;samples++;}}
+  AudioDeviceInfo routed=r.getRoutedDevice();double rms=samples==0?0:Math.sqrt((double)sum/samples);
+  String route=routed==null?"não informado":routed.getProductName()+" [id "+routed.getId()+"]";
+  boolean signal=samples>0&&peak>0;
+  cb.onResult(signal,"CAPTURA DIRETA: "+(signal?"OK":"SEM SINAL")+"\nSolicitado: "+tv.getProductName()+" [id "+tv.getId()+"]\nsetPreferredDevice: "+preferred+"\nRota real: "+route+"\nLeituras: "+reads+" • amostras: "+samples+"\nRMS: "+Math.round(rms)+" • pico: "+peak);
+ }catch(Throwable e){cb.onResult(false,"CAPTURA DIRETA FALHOU: "+(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage()));}finally{if(r!=null){try{if(r.getRecordingState()==AudioRecord.RECORDSTATE_RECORDING)r.stop();}catch(Throwable ignored){}try{r.release();}catch(Throwable ignored){}}}},"ei-chat-mic-probe").start();}
+
  public void record(Callback cb){stop=false;new Thread(()->{AudioRecord r=null;try{
   int rate=16000, channel=AudioFormat.CHANNEL_IN_MONO, fmt=AudioFormat.ENCODING_PCM_16BIT;
   int min=Math.max(AudioRecord.getMinBufferSize(rate,channel,fmt),4096);
