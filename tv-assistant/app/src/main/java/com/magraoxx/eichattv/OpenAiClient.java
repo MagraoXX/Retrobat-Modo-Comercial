@@ -15,6 +15,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 public final class OpenAiClient {
     public interface Callback {
@@ -58,10 +59,19 @@ public final class OpenAiClient {
                             "Você é Ei Chat, assistente visual de uma Android/Google TV. " +
                             "Responda em português do Brasil, de forma curta, natural e útil para ser falada na TV. " +
                             "Analise cuidadosamente a captura e o contexto da tela. Para jogos, use HUD, mapa, missão, cenário, " +
-                            "texto e posição visível para orientar o usuário. Para filmes/séries, só identifique quando houver pistas suficientes. " +
-                            "Para música, use apenas informações visuais disponíveis; se a música não puder ser identificada sem ouvir o áudio, diga isso claramente. " +
-                            "Nunca invente o nome de um jogo, filme, música, personagem, local ou objetivo quando a evidência visual for insuficiente. " +
-                            "Se a imagem estiver bloqueada, preta ou sem informação suficiente, diga o que o usuário deve mostrar na tela para uma nova análise.");
+                            "texto e posição visível para orientar o usuário. Quando for útil, use pesquisa na web para confirmar " +
+                            "walkthroughs, mapas, objetivos, nomes de fases, chefes ou informações atuais. Para filmes/séries, só identifique " +
+                            "quando houver pistas suficientes. Para música, use apenas informações visuais disponíveis; se a música não puder " +
+                            "ser identificada sem ouvir o áudio, diga isso claramente. Nunca invente o nome de um jogo, filme, música, personagem, " +
+                            "local ou objetivo quando a evidência visual for insuficiente. Se a imagem estiver bloqueada, preta ou sem informação " +
+                            "suficiente, diga o que o usuário deve mostrar na tela para uma nova análise.");
+
+                    JSONArray tools = new JSONArray();
+                    JSONObject web = new JSONObject();
+                    web.put("type", "web_search");
+                    tools.put(web);
+                    req.put("tools", tools);
+                    req.put("tool_choice", "auto");
                 } else {
                     req.put("instructions",
                             "Você é Ei Chat, assistente de uma Android/Google TV. Responda em português do Brasil, de forma curta, natural e útil para ser falada em uma televisão.");
@@ -99,12 +109,30 @@ public final class OpenAiClient {
 
                 input.put(msg);
                 req.put("input", input);
-                String answer = sendStreaming(token, req);
+
+                String answer;
+                try {
+                    answer = sendStreaming(token, req);
+                } catch (Exception first) {
+                    if (visualMode && req.has("tools") && isWebToolCompatibilityError(first)) {
+                        req.remove("tools");
+                        req.remove("tool_choice");
+                        answer = sendStreaming(token, req);
+                    } else {
+                        throw first;
+                    }
+                }
                 cb.onSuccess(answer);
             } catch (Throwable e) {
                 cb.onError("IA: " + safe(e));
             }
         }, visualMode ? "ei-chat-vision" : "ei-chat-ai").start();
+    }
+
+    private static boolean isWebToolCompatibilityError(Throwable e) {
+        String m = safe(e).toLowerCase(Locale.ROOT);
+        return m.contains("web_search") || m.contains("web search") ||
+                (m.contains("tool") && (m.contains("support") || m.contains("invalid") || m.contains("unknown") || m.contains("not allowed")));
     }
 
     private String sendStreaming(String token, JSONObject req) throws Exception {
