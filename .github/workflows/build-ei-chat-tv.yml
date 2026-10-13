@@ -31,7 +31,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
-          key: ei-chat-debug-keystore-v1
+          key: ei-chat-debug-keystore-v2
+      - name: Ensure stable debug keystore
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore ~/.android/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+          echo "EI_CHAT_SIGNING_SHA256"
+          keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | grep 'SHA256:'
       - name: Build debug APK
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
