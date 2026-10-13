@@ -52,19 +52,19 @@ jobs:
         working-directory: tv-assistant
         run: gradle :app:assembleDebug --stacktrace
       - name: Prepare direct APK
-        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste18.apk
+        run: cp tv-assistant/app/build/outputs/apk/debug/app-debug.apk EiChat-Teste19.apk
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: EiChatTV-APK
-          path: EiChat-Teste18.apk
+          path: EiChat-Teste19.apk
           if-no-files-found: error
       - name: Publish direct APK on GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view ei-chat-teste18 >/dev/null 2>&1; then
-            gh release upload ei-chat-teste18 EiChat-Teste18.apk --clobber
+          if gh release view ei-chat-teste19 >/dev/null 2>&1; then
+            gh release upload ei-chat-teste19 EiChat-Teste19.apk --clobber
           else
-            gh release create ei-chat-teste18 EiChat-Teste18.apk --title "Ei Chat - Teste 18" --notes "Teste 18: adiciona visão contextual da tela. O assistente solicita screenshot e AssistStructure ao abrir, usa imagem + textos visíveis para ajudar em jogos, mapas, filmes, séries e conteúdo da TV, e informa quando a captura estiver bloqueada por HDMI/DRM/app."
+            gh release create ei-chat-teste19 EiChat-Teste19.apk --title "Ei Chat - Teste 19" --notes "Teste 19: reconhecimento musical acústico. O comando 'que música é essa?' grava cerca de 12 segundos pelo microfone da TV/controle e consulta um serviço de identificação de músicas; mantém a visão contextual do Teste 18. A captura interna/HDMI depende das permissões e limitações da TV."
           fi
