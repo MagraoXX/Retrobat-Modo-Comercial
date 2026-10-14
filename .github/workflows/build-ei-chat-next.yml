@@ -9,6 +9,10 @@ on:
       - '.github/workflows/build-ei-chat-next.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ei-chat-next-build
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
