@@ -273,7 +273,7 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
             return;
         }
         destroySpeech();
-        speech = SpeechRecognizer.createSpeechRecognizer(getContext());
+        speech = VoiceRecognizerHelper.create(getContext());
         speech.setRecognitionListener(new RecognitionListener() {
             public void onReadyForSpeech(Bundle b) { set("Ei Chat • ouvindo", "Pode falar…", Color.rgb(120, 185, 255)); }
             public void onBeginningOfSpeech() { set("Ei Chat • ouvindo", "Estou ouvindo você…", Color.rgb(120, 185, 255)); }
@@ -282,13 +282,13 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
             public void onEndOfSpeech() { set("Ei Chat • entendendo", "Entendendo sua voz…", Color.rgb(190, 150, 255)); }
             public void onError(int e) {
                 set("Ei Chat", "Não consegui ouvir. Tente novamente.", Color.rgb(255, 105, 105));
-                if (continuous) main.postDelayed(() -> startListening(), 900);
+                if (continuous) main.postDelayed(this::hide, 2200);
             }
             public void onResults(Bundle b) {
                 ArrayList<String> a = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                 if (a == null || a.isEmpty() || a.get(0).trim().isEmpty()) {
                     set("Ei Chat", "Não entendi.", Color.rgb(255, 180, 80));
-                    if (continuous) main.postDelayed(() -> startListening(), 700);
+                    if (continuous) main.postDelayed(this::hide, 2200);
                     return;
                 }
                 handle(a.get(0).trim());
@@ -296,11 +296,7 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
             public void onPartialResults(Bundle b) {}
             public void onEvent(int t, Bundle b) {}
         });
-        android.content.Intent i = new android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR");
-        i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        android.content.Intent i = VoiceRecognizerHelper.intent();
         try {
             speech.startListening(i);
         } catch (Throwable e) {
@@ -351,7 +347,7 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
             public void onError(String x) {
                 getContext().getMainExecutor().execute(() -> {
                     set("Ei Chat", x, Color.rgb(255, 105, 105));
-                    if (continuous) main.postDelayed(() -> startListening(), 900);
+                    if (continuous) main.postDelayed(this::hide, 2200);
                 });
             }
         });
@@ -464,7 +460,7 @@ public class EiChatSession extends android.service.voice.VoiceInteractionSession
             @Override public void onError(String x) {
                 getContext().getMainExecutor().execute(() -> {
                     set("Ei Chat • visão", x, Color.rgb(255, 105, 105));
-                    if (continuous) main.postDelayed(() -> startListening(), 900);
+                    if (continuous) main.postDelayed(this::hide, 2200);
                 });
             }
         });

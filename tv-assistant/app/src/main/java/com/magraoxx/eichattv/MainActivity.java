@@ -29,6 +29,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONArray;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -38,12 +39,30 @@ public class MainActivity extends Activity {
     private static final int REQ_ASSISTANT = 1002;
 
     private FrameLayout rootFrame;
-    private LinearLayout chat, historyList, callOverlay;
+    private LinearLayout chat;
+    private LinearLayout historyList;
+    private LinearLayout sidebar;
+    private LinearLayout callOverlay;
     private ScrollView chatScroll;
-    private TextView caption, micText, accountState, conversationTitle;
-    private TextView callOrb, callStatus, callTranscript, callMicLabel;
+    private View sidebarScrim;
+
+    private TextView conversationTitle;
+    private TextView accountState;
+    private TextView caption;
+    private TextView micText;
+    private TextView callOrb;
+    private TextView callStatus;
+    private TextView callTranscript;
+    private TextView callMicLabel;
+
     private EditText input;
-    private Button listen, account, callButton, callMute, callEnd;
+    private Button listen;
+    private Button account;
+    private Button callButton;
+    private Button callMute;
+    private Button callEnd;
+    private Button menuButton;
+    private Button sidebarFirst;
 
     private TextToSpeech tts;
     private CommandEngine engine;
@@ -52,13 +71,18 @@ public class MainActivity extends Activity {
     private ChatHistoryStore history;
     private SpeechRecognizer speech;
 
-    private boolean pendingPermission, pendingVoiceCall, audioRetry, callActive, callMuted;
-    private int voiceRetryCount;
+    private boolean pendingPermission;
+    private boolean pendingVoiceCall;
+    private boolean callActive;
+    private boolean callMuted;
+    private boolean callListening;
+    private boolean replyShouldSpeak;
     private Runnable afterSpeech;
     private long lastBackAt;
 
-    @Override public void onCreate(Bundle b) {
-        super.onCreate(b);
+    @Override
+    public void onCreate(Bundle state) {
+        super.onCreate(state);
         engine = new CommandEngine(this);
         ai = new OpenAiClient(this);
         auth = new ChatGptAuth(this);
@@ -68,422 +92,948 @@ public class MainActivity extends Activity {
         renderHistory();
         renderCurrentConversation();
 
-        tts = new TextToSpeech(this, x -> {
-            if (x == TextToSpeech.SUCCESS) {
-                tts.setLanguage(new Locale("pt", "BR"));
-                tts.setSpeechRate(1.02f);
-                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                    @Override public void onStart(String id) {
-                        runOnUiThread(() -> { if (callActive) setCallState("Respondendo", "Ei Chat está falando…", Color.rgb(210,210,210)); });
-                    }
-                    @Override public void onDone(String id) { finishSpeechCallback(); }
-                    @Override public void onError(String id) { finishSpeechCallback(); }
-                });
-            }
+        tts = new TextToSpeech(this, result -> {
+            if (result != TextToSpeech.SUCCESS) return;
+            tts.setLanguage(new Locale("pt", "BR"));
+            tts.setSpeechRate(1.02f);
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String utteranceId) {
+                    runOnUiThread(() -> {
+                        if (callActive) setCallState("Respondendo", "Ei Chat está falando…", Color.rgb(210, 210, 210));
+                    });
+                }
+                @Override public void onDone(String utteranceId) { finishSpeechCallback(); }
+                @Override public void onError(String utteranceId) { finishSpeechCallback(); }
+            });
         });
 
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+        }
 
-        if (getIntent() != null && getIntent().getBooleanExtra("start_listening", false))
+        if (getIntent() != null && getIntent().getBooleanExtra("start_listening", false)) {
             new Handler(Looper.getMainLooper()).postDelayed(this::startSingleListening, 450);
+        }
     }
 
-    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
-    private TextView text(String s, float size) {
-        TextView v = new TextView(this); v.setText(s); v.setTextColor(Color.rgb(236,236,236)); v.setTextSize(size); return v;
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
-    private GradientDrawable shape(int fill, int radius, int stroke, int strokeWidth) {
-        GradientDrawable g = new GradientDrawable(); g.setColor(fill); g.setCornerRadius(dp(radius));
-        if (stroke != 0) g.setStroke(dp(strokeWidth), stroke); return g;
+
+    private TextView text(String value, float size) {
+        TextView view = new TextView(this);
+        view.setText(value);
+        view.setTextColor(Color.rgb(238, 238, 238));
+        view.setTextSize(size);
+        return view;
     }
-    private GradientDrawable circle(int fill, int stroke, int strokeWidth) {
-        GradientDrawable g = new GradientDrawable(); g.setShape(GradientDrawable.OVAL); g.setColor(fill);
-        if (stroke != 0) g.setStroke(dp(strokeWidth), stroke); return g;
+
+    private GradientDrawable shape(int fill, int radiusDp, int stroke, int strokeDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(fill);
+        drawable.setCornerRadius(dp(radiusDp));
+        if (stroke != 0) drawable.setStroke(dp(strokeDp), stroke);
+        return drawable;
     }
-    private int lighten(int c) {
-        return Color.rgb(Math.min(255, Color.red(c)+22), Math.min(255, Color.green(c)+22), Math.min(255, Color.blue(c)+22));
+
+    private GradientDrawable circle(int fill, int stroke, int strokeDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.OVAL);
+        drawable.setColor(fill);
+        if (stroke != 0) drawable.setStroke(dp(strokeDp), stroke);
+        return drawable;
     }
-    private void paintButton(Button b, int color, boolean focused) {
-        b.setBackground(shape(focused ? lighten(color) : color, 13, focused ? Color.rgb(220,220,220) : 0, 2));
-        b.setScaleX(focused ? 1.02f : 1f); b.setScaleY(focused ? 1.04f : 1f); b.setElevation(focused ? dp(8) : dp(1));
+
+    private int lighten(int color) {
+        return Color.rgb(
+                Math.min(255, Color.red(color) + 18),
+                Math.min(255, Color.green(color) + 18),
+                Math.min(255, Color.blue(color) + 18));
     }
-    private Button button(String label, int color, View.OnClickListener listener) {
-        Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextSize(15); b.setTextColor(Color.WHITE);
-        b.setGravity(Gravity.CENTER); b.setPadding(dp(12),0,dp(12),0); b.setMinHeight(dp(48)); b.setFocusable(true); b.setFocusableInTouchMode(true);
-        b.setOnClickListener(listener); paintButton(b,color,false); b.setOnFocusChangeListener((v,f)->paintButton((Button)v,color,f)); return b;
+
+    private void paintButton(Button button, int base, boolean focused) {
+        int fill = focused ? lighten(base) : base;
+        int stroke = focused ? Color.rgb(220, 220, 220) : 0;
+        button.setBackground(shape(fill, 14, stroke, 2));
+        button.setScaleX(focused ? 1.018f : 1f);
+        button.setScaleY(focused ? 1.035f : 1f);
+        button.setElevation(focused ? dp(6) : 0);
+    }
+
+    private Button button(String label, int color, View.OnClickListener click) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(14);
+        button.setTextColor(Color.WHITE);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(10), 0, dp(10), 0);
+        button.setMinHeight(dp(44));
+        button.setFocusable(true);
+        button.setFocusableInTouchMode(true);
+        button.setOnClickListener(click);
+        paintButton(button, color, false);
+        button.setOnFocusChangeListener((v, focused) -> paintButton((Button) v, color, focused));
+        return button;
     }
 
     private void buildUi() {
-        rootFrame = new FrameLayout(this); rootFrame.setBackgroundColor(Color.rgb(33,33,33));
-        LinearLayout app = new LinearLayout(this); app.setOrientation(LinearLayout.HORIZONTAL); app.setBackgroundColor(Color.rgb(33,33,33));
-        rootFrame.addView(app,new FrameLayout.LayoutParams(-1,-1));
-        buildSidebar(app); buildChatArea(app); buildCallOverlay(); setContentView(rootFrame);
+        rootFrame = new FrameLayout(this);
+        rootFrame.setBackgroundColor(Color.rgb(33, 33, 33));
+
+        LinearLayout main = new LinearLayout(this);
+        main.setOrientation(LinearLayout.VERTICAL);
+        main.setBackgroundColor(Color.rgb(33, 33, 33));
+        main.setPadding(dp(16), dp(8), dp(16), dp(12));
+        rootFrame.addView(main, new FrameLayout.LayoutParams(-1, -1));
+
+        buildTopBar(main);
+        buildConversationArea(main);
+        buildComposer(main);
+        buildSidebar();
+        buildCallOverlay();
+
+        caption = text("", 1);
+        caption.setVisibility(View.GONE);
+        micText = text("", 1);
+        micText.setVisibility(View.GONE);
+
+        setContentView(rootFrame);
     }
 
-    private void buildSidebar(LinearLayout app) {
-        LinearLayout side = new LinearLayout(this); side.setOrientation(LinearLayout.VERTICAL); side.setPadding(dp(18),dp(18),dp(18),dp(16));
-        side.setBackgroundColor(Color.rgb(23,23,23)); app.addView(side,new LinearLayout.LayoutParams(dp(330),-1));
+    private void buildTopBar(LinearLayout main) {
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
 
-        LinearLayout brandRow = new LinearLayout(this); brandRow.setOrientation(LinearLayout.HORIZONTAL); brandRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView mark = text("✦",24); mark.setGravity(Gravity.CENTER); mark.setBackground(circle(Color.rgb(245,245,245),0,0)); mark.setTextColor(Color.rgb(20,20,20));
-        brandRow.addView(mark,new LinearLayout.LayoutParams(dp(42),dp(42)));
-        TextView brand = text("Ei Chat",22); brand.setTypeface(null,1); brand.setGravity(Gravity.CENTER_VERTICAL); brand.setPadding(dp(12),0,0,0);
-        brandRow.addView(brand,new LinearLayout.LayoutParams(0,dp(48),1f)); side.addView(brandRow,new LinearLayout.LayoutParams(-1,dp(50)));
+        menuButton = button("☰", Color.rgb(33, 33, 33), v -> toggleSidebar());
+        menuButton.setTextSize(20);
+        top.addView(menuButton, new LinearLayout.LayoutParams(dp(50), dp(48)));
 
-        Button newChat = button("＋  Novo chat",Color.rgb(45,45,45),v->newConversation());
-        LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(-1,dp(52)); newLp.setMargins(0,dp(12),0,dp(12)); side.addView(newChat,newLp);
-        TextView historyLabel = text("Chats",12); historyLabel.setTextColor(Color.rgb(150,150,150)); historyLabel.setPadding(dp(4),0,0,dp(6));
-        side.addView(historyLabel,new LinearLayout.LayoutParams(-1,dp(28)));
+        conversationTitle = text("Novo chat", 16);
+        conversationTitle.setTypeface(null, 1);
+        conversationTitle.setGravity(Gravity.CENTER_VERTICAL);
+        conversationTitle.setPadding(dp(10), 0, 0, 0);
+        top.addView(conversationTitle, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
-        ScrollView historyScroll = new ScrollView(this); historyList = new LinearLayout(this); historyList.setOrientation(LinearLayout.VERTICAL);
-        historyScroll.addView(historyList,new ScrollView.LayoutParams(-1,-2)); side.addView(historyScroll,new LinearLayout.LayoutParams(-1,0,1f));
+        Button options = button("•••", Color.rgb(33, 33, 33), v -> accountAction());
+        options.setTextSize(17);
+        top.addView(options, new LinearLayout.LayoutParams(dp(60), dp(48)));
 
-        TextView toolsLabel = text("Ferramentas",12); toolsLabel.setTextColor(Color.rgb(145,145,145)); toolsLabel.setPadding(dp(4),dp(8),0,dp(4));
-        side.addView(toolsLabel,new LinearLayout.LayoutParams(-1,dp(34)));
-        Button assistant = button("Assistente da TV",Color.rgb(38,38,38),v->requestAssistantRole());
-        LinearLayout.LayoutParams toolLp = new LinearLayout.LayoutParams(-1,dp(48)); toolLp.setMargins(0,0,0,dp(6)); side.addView(assistant,toolLp);
-        Button diag = button("Diagnóstico",Color.rgb(38,38,38),v->runDiagnostics());
-        LinearLayout.LayoutParams diagLp = new LinearLayout.LayoutParams(-1,dp(48)); diagLp.setMargins(0,0,0,dp(12)); side.addView(diag,diagLp);
-
-        accountState = text("ChatGPT",12); accountState.setTextColor(Color.rgb(160,160,160)); accountState.setMaxLines(1);
-        side.addView(accountState,new LinearLayout.LayoutParams(-1,dp(26)));
-        account = button("Conectar ChatGPT",Color.rgb(45,45,45),v->accountAction()); side.addView(account,new LinearLayout.LayoutParams(-1,dp(52)));
+        main.addView(top, new LinearLayout.LayoutParams(-1, dp(52)));
     }
 
-    private void buildChatArea(LinearLayout app) {
-        LinearLayout main = new LinearLayout(this); main.setOrientation(LinearLayout.VERTICAL); main.setPadding(dp(34),dp(16),dp(34),dp(18));
-        app.addView(main,new LinearLayout.LayoutParams(0,-1,1f));
+    private void buildConversationArea(LinearLayout main) {
+        int width = getResources().getDisplayMetrics().widthPixels;
+        chatScroll = new ScrollView(this);
+        chatScroll.setFillViewport(true);
+        chat = new LinearLayout(this);
+        chat.setOrientation(LinearLayout.VERTICAL);
+        int sidePadding = Math.max(dp(30), (int) (width * .14f));
+        chat.setPadding(sidePadding, dp(8), sidePadding, dp(22));
+        chatScroll.addView(chat, new ScrollView.LayoutParams(-1, -2));
+        main.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+    }
 
-        LinearLayout top = new LinearLayout(this); top.setOrientation(LinearLayout.HORIZONTAL); top.setGravity(Gravity.CENTER_VERTICAL);
-        conversationTitle = text("Novo chat",17); conversationTitle.setTypeface(null,1); conversationTitle.setGravity(Gravity.CENTER_VERTICAL);
-        top.addView(conversationTitle,new LinearLayout.LayoutParams(0,dp(50),1f));
-        LinearLayout stateCol = new LinearLayout(this); stateCol.setOrientation(LinearLayout.VERTICAL); stateCol.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        caption = text("Ei Chat",13); caption.setGravity(Gravity.RIGHT); caption.setTextColor(Color.rgb(190,190,190));
-        micText = text("● preparando",12); micText.setGravity(Gravity.RIGHT); micText.setTextColor(Color.rgb(140,140,140));
-        stateCol.addView(caption,new LinearLayout.LayoutParams(-2,dp(22))); stateCol.addView(micText,new LinearLayout.LayoutParams(-2,dp(22)));
-        top.addView(stateCol,new LinearLayout.LayoutParams(-2,dp(48))); main.addView(top,new LinearLayout.LayoutParams(-1,dp(54)));
+    private void buildComposer(LinearLayout main) {
+        int width = getResources().getDisplayMetrics().widthPixels;
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setGravity(Gravity.CENTER_HORIZONTAL);
 
-        chatScroll = new ScrollView(this); chatScroll.setFillViewport(true); chat = new LinearLayout(this); chat.setOrientation(LinearLayout.VERTICAL);
-        chat.setPadding(dp(70),dp(12),dp(70),dp(30)); chatScroll.addView(chat,new ScrollView.LayoutParams(-1,-2));
-        main.addView(chatScroll,new LinearLayout.LayoutParams(-1,0,1f));
+        LinearLayout composer = new LinearLayout(this);
+        composer.setOrientation(LinearLayout.HORIZONTAL);
+        composer.setGravity(Gravity.CENTER_VERTICAL);
+        composer.setPadding(dp(7), dp(6), dp(7), dp(6));
+        composer.setBackground(shape(Color.rgb(47, 47, 47), 27, Color.rgb(76, 76, 76), 1));
+        int composerWidth = Math.min(dp(760), (int) (width * .66f));
+        wrap.addView(composer, new LinearLayout.LayoutParams(composerWidth, -2));
 
-        LinearLayout composerWrap = new LinearLayout(this); composerWrap.setGravity(Gravity.CENTER_HORIZONTAL);
-        LinearLayout composer = new LinearLayout(this); composer.setOrientation(LinearLayout.HORIZONTAL); composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setPadding(dp(14),dp(8),dp(9),dp(8)); composer.setBackground(shape(Color.rgb(47,47,47),24,Color.rgb(73,73,73),1));
-        composerWrap.addView(composer,new LinearLayout.LayoutParams(dp(980),-2));
+        Button plus = button("＋", Color.rgb(47, 47, 47), v -> showToolsDialog());
+        plus.setTextSize(20);
+        composer.addView(plus, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        input = new EditText(this); input.setHint("Envie uma mensagem para o Ei Chat"); input.setHintTextColor(Color.rgb(150,150,150));
-        input.setTextColor(Color.WHITE); input.setTextSize(17); input.setBackgroundColor(Color.TRANSPARENT); input.setPadding(dp(10),dp(5),dp(10),dp(5));
-        input.setMaxLines(4); input.setMinLines(1); input.setFocusable(true); composer.addView(input,new LinearLayout.LayoutParams(0,-2,1f));
+        input = new EditText(this);
+        input.setHint("Mensagem para o Ei Chat");
+        input.setHintTextColor(Color.rgb(155, 155, 155));
+        input.setTextColor(Color.WHITE);
+        input.setTextSize(16);
+        input.setBackgroundColor(Color.TRANSPARENT);
+        input.setPadding(dp(8), dp(4), dp(8), dp(4));
+        input.setMinLines(1);
+        input.setMaxLines(4);
+        input.setFocusable(true);
+        composer.addView(input, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        listen = button("🎤",Color.rgb(61,61,61),v->startSingleListening());
-        LinearLayout.LayoutParams micLp = new LinearLayout.LayoutParams(dp(56),dp(52)); micLp.setMargins(dp(6),0,dp(6),0); composer.addView(listen,micLp);
-        callButton = button("◉  Voz",Color.rgb(61,61,61),v->startVoiceCall());
-        LinearLayout.LayoutParams callLp = new LinearLayout.LayoutParams(dp(98),dp(52)); callLp.setMargins(0,0,dp(6),0); composer.addView(callButton,callLp);
-        Button send = button("↑",Color.rgb(238,238,238),v->sendTyped()); send.setTextColor(Color.BLACK); composer.addView(send,new LinearLayout.LayoutParams(dp(56),dp(52)));
+        listen = button("🎤", Color.rgb(47, 47, 47), v -> startSingleListening());
+        composer.addView(listen, new LinearLayout.LayoutParams(dp(50), dp(48)));
 
-        main.addView(composerWrap,new LinearLayout.LayoutParams(-1,-2));
-        TextView hint = text("Use o controle para navegar • Voz inicia conversa contínua",11); hint.setTextColor(Color.rgb(115,115,115)); hint.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1,dp(28)); hintLp.setMargins(0,dp(5),0,0); main.addView(hint,hintLp);
+        callButton = button("◉", Color.rgb(47, 47, 47), v -> startVoiceCall());
+        callButton.setTextSize(19);
+        composer.addView(callButton, new LinearLayout.LayoutParams(dp(50), dp(48)));
+
+        Button send = button("↑", Color.rgb(238, 238, 238), v -> sendTyped());
+        send.setTextColor(Color.BLACK);
+        send.setTextSize(19);
+        composer.addView(send, new LinearLayout.LayoutParams(dp(50), dp(48)));
+
+        main.addView(wrap, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void buildSidebar() {
+        int width = getResources().getDisplayMetrics().widthPixels;
+
+        sidebarScrim = new View(this);
+        sidebarScrim.setBackgroundColor(Color.argb(90, 0, 0, 0));
+        sidebarScrim.setVisibility(View.GONE);
+        sidebarScrim.setOnClickListener(v -> closeSidebar());
+        rootFrame.addView(sidebarScrim, new FrameLayout.LayoutParams(-1, -1));
+
+        sidebar = new LinearLayout(this);
+        sidebar.setOrientation(LinearLayout.VERTICAL);
+        sidebar.setPadding(dp(14), dp(14), dp(14), dp(14));
+        sidebar.setBackgroundColor(Color.rgb(23, 23, 23));
+        sidebar.setVisibility(View.GONE);
+
+        int sidebarWidth = Math.min(dp(300), Math.max(dp(220), (int) (width * .24f)));
+        FrameLayout.LayoutParams sidebarParams = new FrameLayout.LayoutParams(sidebarWidth, -1, Gravity.LEFT);
+        rootFrame.addView(sidebar, sidebarParams);
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView brand = text("Ei Chat", 18);
+        brand.setTypeface(null, 1);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(brand, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        Button close = button("×", Color.rgb(23, 23, 23), v -> closeSidebar());
+        close.setTextSize(20);
+        head.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        sidebar.addView(head, new LinearLayout.LayoutParams(-1, dp(46)));
+
+        sidebarFirst = button("＋  Novo chat", Color.rgb(39, 39, 39), v -> newConversation());
+        sidebarFirst.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        sidebarFirst.setPadding(dp(12), 0, dp(8), 0);
+        LinearLayout.LayoutParams newChatParams = new LinearLayout.LayoutParams(-1, dp(46));
+        newChatParams.setMargins(0, dp(8), 0, dp(10));
+        sidebar.addView(sidebarFirst, newChatParams);
+
+        TextView chatsLabel = text("Chats", 12);
+        chatsLabel.setTextColor(Color.rgb(145, 145, 145));
+        chatsLabel.setPadding(dp(6), 0, 0, dp(4));
+        sidebar.addView(chatsLabel, new LinearLayout.LayoutParams(-1, dp(28)));
+
+        ScrollView historyScroll = new ScrollView(this);
+        historyList = new LinearLayout(this);
+        historyList.setOrientation(LinearLayout.VERTICAL);
+        historyScroll.addView(historyList, new ScrollView.LayoutParams(-1, -2));
+        sidebar.addView(historyScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        Button assistant = button("Assistente da TV", Color.rgb(23, 23, 23), v -> requestAssistantRole());
+        assistant.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        Button diagnostics = button("Diagnóstico", Color.rgb(23, 23, 23), v -> runDiagnostics());
+        diagnostics.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        sidebar.addView(assistant, new LinearLayout.LayoutParams(-1, dp(44)));
+        sidebar.addView(diagnostics, new LinearLayout.LayoutParams(-1, dp(44)));
+
+        accountState = text("ChatGPT", 12);
+        accountState.setTextColor(Color.rgb(145, 145, 145));
+        accountState.setMaxLines(1);
+        LinearLayout.LayoutParams stateParams = new LinearLayout.LayoutParams(-1, dp(28));
+        stateParams.setMargins(dp(6), dp(8), 0, 0);
+        sidebar.addView(accountState, stateParams);
+
+        account = button("Conta", Color.rgb(39, 39, 39), v -> accountAction());
+        account.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        sidebar.addView(account, new LinearLayout.LayoutParams(-1, dp(46)));
     }
 
     private void buildCallOverlay() {
-        callOverlay = new LinearLayout(this); callOverlay.setOrientation(LinearLayout.VERTICAL); callOverlay.setGravity(Gravity.CENTER_HORIZONTAL);
-        callOverlay.setPadding(dp(48),dp(30),dp(48),dp(36)); callOverlay.setBackgroundColor(Color.rgb(18,18,18)); callOverlay.setVisibility(View.GONE);
+        callOverlay = new LinearLayout(this);
+        callOverlay.setOrientation(LinearLayout.VERTICAL);
+        callOverlay.setGravity(Gravity.CENTER_HORIZONTAL);
+        callOverlay.setPadding(dp(40), dp(22), dp(40), dp(28));
+        callOverlay.setBackgroundColor(Color.rgb(33, 33, 33));
+        callOverlay.setVisibility(View.GONE);
 
-        LinearLayout callTop = new LinearLayout(this); callTop.setOrientation(LinearLayout.HORIZONTAL); callTop.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("Ei Chat",20); title.setTypeface(null,1); callTop.addView(title,new LinearLayout.LayoutParams(0,dp(52),1f));
-        TextView mode = text("Conversa por voz",13); mode.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL); mode.setTextColor(Color.rgb(155,155,155));
-        callTop.addView(mode,new LinearLayout.LayoutParams(-2,dp(52))); callOverlay.addView(callTop,new LinearLayout.LayoutParams(-1,dp(56)));
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("Voz", 17);
+        title.setTypeface(null, 1);
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        TextView app = text("Ei Chat", 13);
+        app.setTextColor(Color.rgb(155, 155, 155));
+        app.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        header.addView(app, new LinearLayout.LayoutParams(-2, dp(48)));
+        callOverlay.addView(header, new LinearLayout.LayoutParams(-1, dp(52)));
 
-        callOverlay.addView(new Space(this),new LinearLayout.LayoutParams(1,0,.45f));
-        callOrb = text("✦",54); callOrb.setGravity(Gravity.CENTER); callOrb.setTextColor(Color.WHITE);
-        callOrb.setBackground(circle(Color.rgb(40,40,40),Color.rgb(120,120,120),3)); callOrb.setElevation(dp(14));
-        callOverlay.addView(callOrb,new LinearLayout.LayoutParams(dp(224),dp(224)));
+        callOverlay.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, .45f));
 
-        callStatus = text("Pronto",28); callStatus.setTypeface(null,1); callStatus.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams stLp = new LinearLayout.LayoutParams(-1,dp(52)); stLp.setMargins(0,dp(28),0,0); callOverlay.addView(callStatus,stLp);
-        callTranscript = text("Pode falar quando quiser.",17); callTranscript.setGravity(Gravity.CENTER); callTranscript.setTextColor(Color.rgb(185,185,185)); callTranscript.setMaxLines(3);
-        LinearLayout.LayoutParams trLp = new LinearLayout.LayoutParams(dp(900),-2); trLp.setMargins(0,dp(8),0,0); callOverlay.addView(callTranscript,trLp);
-        callMicLabel = text("Microfone ativo",12); callMicLabel.setGravity(Gravity.CENTER); callMicLabel.setTextColor(Color.rgb(130,130,130));
-        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1,dp(32)); mlp.setMargins(0,dp(8),0,0); callOverlay.addView(callMicLabel,mlp);
+        callOrb = text("✦", 44);
+        callOrb.setGravity(Gravity.CENTER);
+        callOrb.setTextColor(Color.WHITE);
+        callOrb.setBackground(circle(Color.rgb(39, 39, 39), Color.rgb(130, 130, 130), 3));
+        callOrb.setElevation(dp(12));
+        callOverlay.addView(callOrb, new LinearLayout.LayoutParams(dp(180), dp(180)));
 
-        callOverlay.addView(new Space(this),new LinearLayout.LayoutParams(1,0,.55f));
-        LinearLayout controls = new LinearLayout(this); controls.setOrientation(LinearLayout.HORIZONTAL); controls.setGravity(Gravity.CENTER);
-        callMute = button("Silenciar",Color.rgb(54,54,54),v->toggleCallMute());
-        LinearLayout.LayoutParams muteLp = new LinearLayout.LayoutParams(dp(150),dp(58)); muteLp.setMargins(0,0,dp(18),0); controls.addView(callMute,muteLp);
-        callEnd = button("Encerrar",Color.rgb(116,45,45),v->endVoiceCall(false)); controls.addView(callEnd,new LinearLayout.LayoutParams(dp(150),dp(58)));
-        callOverlay.addView(controls,new LinearLayout.LayoutParams(-1,dp(66))); rootFrame.addView(callOverlay,new FrameLayout.LayoutParams(-1,-1));
+        callStatus = text("Pronto", 24);
+        callStatus.setTypeface(null, 1);
+        callStatus.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, dp(50));
+        statusParams.setMargins(0, dp(24), 0, 0);
+        callOverlay.addView(callStatus, statusParams);
+
+        callTranscript = text("Pode falar quando quiser.", 16);
+        callTranscript.setGravity(Gravity.CENTER);
+        callTranscript.setTextColor(Color.rgb(185, 185, 185));
+        callTranscript.setMaxLines(4);
+        callOverlay.addView(callTranscript, new LinearLayout.LayoutParams(dp(820), -2));
+
+        callMicLabel = text("Microfone ativo", 12);
+        callMicLabel.setGravity(Gravity.CENTER);
+        callMicLabel.setTextColor(Color.rgb(130, 130, 130));
+        LinearLayout.LayoutParams micLabelParams = new LinearLayout.LayoutParams(-1, dp(32));
+        micLabelParams.setMargins(0, dp(8), 0, 0);
+        callOverlay.addView(callMicLabel, micLabelParams);
+
+        callOverlay.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, .55f));
+
+        LinearLayout controls = new LinearLayout(this);
+        controls.setOrientation(LinearLayout.HORIZONTAL);
+        controls.setGravity(Gravity.CENTER);
+        callMute = button("Silenciar", Color.rgb(54, 54, 54), v -> toggleCallMute());
+        LinearLayout.LayoutParams muteParams = new LinearLayout.LayoutParams(dp(150), dp(56));
+        muteParams.setMargins(0, 0, dp(16), 0);
+        controls.addView(callMute, muteParams);
+        callEnd = button("Encerrar", Color.rgb(108, 43, 43), v -> endVoiceCall(false));
+        controls.addView(callEnd, new LinearLayout.LayoutParams(dp(150), dp(56)));
+        callOverlay.addView(controls, new LinearLayout.LayoutParams(-1, dp(64)));
+
+        rootFrame.addView(callOverlay, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private void toggleSidebar() {
+        if (sidebar == null) return;
+        if (sidebar.getVisibility() == View.VISIBLE) closeSidebar();
+        else openSidebar();
+    }
+
+    private void openSidebar() {
+        sidebarScrim.setVisibility(View.VISIBLE);
+        sidebar.setVisibility(View.VISIBLE);
+        sidebarFirst.requestFocus();
+    }
+
+    private void closeSidebar() {
+        if (sidebarScrim != null) sidebarScrim.setVisibility(View.GONE);
+        if (sidebar != null) sidebar.setVisibility(View.GONE);
+        if (menuButton != null) menuButton.requestFocus();
+    }
+
+    private void showToolsDialog() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Ferramentas")
+                .setItems(new String[]{"Conversa por voz", "Assistente da TV", "Diagnóstico"}, (d, which) -> {
+                    if (which == 0) startVoiceCall();
+                    else if (which == 1) requestAssistantRole();
+                    else if (which == 2) runDiagnostics();
+                })
+                .show();
     }
 
     private void renderHistory() {
-        if (historyList == null) return; historyList.removeAllViews(); ChatHistoryStore.Conversation current = history.current();
+        if (historyList == null) return;
+        historyList.removeAllViews();
+        ChatHistoryStore.Conversation current = history.current();
         List<ChatHistoryStore.Conversation> recent = history.recent();
-        for (ChatHistoryStore.Conversation c : recent) {
-            String label = c.title == null || c.title.trim().isEmpty() ? "Novo chat" : c.title;
-            int base = c.id.equals(current.id) ? Color.rgb(48,48,48) : Color.rgb(23,23,23);
-            Button b = button(label,base,v->selectConversation(c.id)); b.setTextSize(14); b.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL); b.setPadding(dp(12),0,dp(10),0);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1,dp(46)); lp.setMargins(0,0,0,dp(3)); historyList.addView(b,lp);
+        for (ChatHistoryStore.Conversation conversation : recent) {
+            String label = conversation.title == null || conversation.title.trim().isEmpty() ? "Novo chat" : conversation.title;
+            int background = conversation.id.equals(current.id) ? Color.rgb(45, 45, 45) : Color.rgb(23, 23, 23);
+            Button row = button(label, background, v -> selectConversation(conversation.id));
+            row.setTextSize(13);
+            row.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(12), 0, dp(8), 0);
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, dp(42));
+            rowParams.setMargins(0, 0, 0, dp(2));
+            historyList.addView(row, rowParams);
         }
     }
 
     private void renderCurrentConversation() {
-        ChatHistoryStore.Conversation c = history.current(); conversationTitle.setText(c.title == null ? "Novo chat" : c.title); chat.removeAllViews();
-        if (c.messages.isEmpty()) showWelcome(); else for (ChatHistoryStore.Message m : c.messages) appendMessageView(m.text,"user".equals(m.role));
-        chatScroll.post(()->chatScroll.fullScroll(View.FOCUS_DOWN));
+        ChatHistoryStore.Conversation conversation = history.current();
+        conversationTitle.setText(conversation.title == null ? "Novo chat" : conversation.title);
+        chat.removeAllViews();
+        if (conversation.messages.isEmpty()) {
+            showWelcome();
+        } else {
+            for (ChatHistoryStore.Message message : conversation.messages) {
+                appendMessageView(message.text, "user".equals(message.role));
+            }
+        }
+        chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
     }
 
     private void showWelcome() {
-        chat.addView(new Space(this),new LinearLayout.LayoutParams(1,dp(120)));
-        TextView mark = text("✦",36); mark.setGravity(Gravity.CENTER); mark.setTextColor(Color.rgb(230,230,230)); chat.addView(mark,new LinearLayout.LayoutParams(-1,dp(56)));
-        TextView hero = text("Como posso ajudar?",30); hero.setTypeface(null,1); hero.setGravity(Gravity.CENTER); chat.addView(hero,new LinearLayout.LayoutParams(-1,dp(60)));
-        TextView sub = text("Converse, pergunte, controle a TV ou inicie uma chamada por voz.",15); sub.setTextColor(Color.rgb(155,155,155)); sub.setGravity(Gravity.CENTER);
-        chat.addView(sub,new LinearLayout.LayoutParams(-1,dp(46)));
+        chat.addView(new Space(this), new LinearLayout.LayoutParams(1, dp(120)));
+        TextView mark = text("✦", 32);
+        mark.setGravity(Gravity.CENTER);
+        mark.setTextColor(Color.rgb(232, 232, 232));
+        chat.addView(mark, new LinearLayout.LayoutParams(-1, dp(48)));
+        TextView hero = text("Como posso ajudar?", 28);
+        hero.setTypeface(null, 1);
+        hero.setGravity(Gravity.CENTER);
+        chat.addView(hero, new LinearLayout.LayoutParams(-1, dp(58)));
     }
 
     private void appendMessageView(String value, boolean user) {
         if (value == null || value.trim().isEmpty()) return;
+        int width = getResources().getDisplayMetrics().widthPixels;
+
         if (user) {
-            TextView bubble = text(value.trim(),16); bubble.setLineSpacing(0,1.15f); bubble.setPadding(dp(18),dp(12),dp(18),dp(12));
-            bubble.setBackground(shape(Color.rgb(55,55,55),18,0,0)); bubble.setMaxWidth(dp(760));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2,-2); lp.gravity=Gravity.RIGHT; lp.setMargins(dp(160),dp(8),0,dp(12)); chat.addView(bubble,lp);
-        } else {
-            LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); row.setGravity(Gravity.TOP);
-            TextView icon = text("✦",16); icon.setGravity(Gravity.CENTER); icon.setTextColor(Color.rgb(25,25,25)); icon.setBackground(circle(Color.rgb(238,238,238),0,0));
-            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(34),dp(34)); iconLp.setMargins(0,dp(4),dp(14),0); row.addView(icon,iconLp);
-            TextView body = text(value.trim(),16); body.setLineSpacing(dp(2),1.14f); body.setTextColor(Color.rgb(235,235,235)); body.setPadding(0,dp(5),0,dp(5));
-            row.addView(body,new LinearLayout.LayoutParams(0,-2,1f)); LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1,-2); rowLp.setMargins(0,dp(6),dp(120),dp(16)); chat.addView(row,rowLp);
+            TextView bubble = text(value.trim(), 16);
+            bubble.setLineSpacing(0, 1.15f);
+            bubble.setPadding(dp(17), dp(11), dp(17), dp(11));
+            bubble.setBackground(shape(Color.rgb(55, 55, 55), 18, 0, 0));
+            bubble.setMaxWidth((int) (width * .46f));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, -2);
+            params.gravity = Gravity.RIGHT;
+            params.setMargins(dp(80), dp(8), 0, dp(12));
+            chat.addView(bubble, params);
+            return;
         }
-        chatScroll.post(()->chatScroll.fullScroll(View.FOCUS_DOWN));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.TOP);
+        TextView icon = text("✦", 15);
+        icon.setGravity(Gravity.CENTER);
+        icon.setTextColor(Color.rgb(28, 28, 28));
+        icon.setBackground(circle(Color.rgb(238, 238, 238), 0, 0));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(32), dp(32));
+        iconParams.setMargins(0, dp(3), dp(13), 0);
+        row.addView(icon, iconParams);
+
+        TextView body = text(value.trim(), 16);
+        body.setLineSpacing(dp(2), 1.14f);
+        body.setTextColor(Color.rgb(238, 238, 238));
+        body.setPadding(0, dp(4), 0, dp(4));
+        row.addView(body, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
+        rowParams.setMargins(0, dp(6), dp(70), dp(16));
+        chat.addView(row, rowParams);
+        chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
     }
 
     private void appendConversationMessage(String role, String value) {
-        history.append(role,value); appendMessageView(value,"user".equals(role)); conversationTitle.setText(history.current().title); renderHistory();
+        history.append(role, value);
+        appendMessageView(value, "user".equals(role));
+        conversationTitle.setText(history.current().title);
+        renderHistory();
     }
 
     private void showNotice(String value) {
-        if (value == null || value.trim().isEmpty()) return; TextView notice = text(value.trim(),13); notice.setGravity(Gravity.CENTER);
-        notice.setTextColor(Color.rgb(165,165,165)); notice.setPadding(dp(16),dp(8),dp(16),dp(8));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1,-2); lp.setMargins(dp(120),dp(7),dp(120),dp(7)); chat.addView(notice,lp);
-        chatScroll.post(()->chatScroll.fullScroll(View.FOCUS_DOWN));
+        if (value == null || value.trim().isEmpty()) return;
+        TextView notice = text(value.trim(), 13);
+        notice.setGravity(Gravity.CENTER);
+        notice.setTextColor(Color.rgb(160, 160, 160));
+        notice.setPadding(dp(14), dp(8), dp(14), dp(8));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.setMargins(dp(100), dp(6), dp(100), dp(6));
+        chat.addView(notice, params);
+        chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
     }
 
     private void newConversation() {
-        if (callActive) endVoiceCall(false); destroySpeech(); history.newConversation(); renderHistory(); renderCurrentConversation(); input.setText("");
-        caption.setText("Ei Chat"); micText.setText(auth.isConnected()?"● IA pronta":"● conectar ChatGPT"); input.requestFocus();
+        if (callActive) endVoiceCall(false);
+        destroySpeech();
+        history.newConversation();
+        renderHistory();
+        renderCurrentConversation();
+        input.setText("");
+        closeSidebar();
+        input.requestFocus();
     }
+
     private void selectConversation(String id) {
-        if (callActive) endVoiceCall(false); destroySpeech(); history.select(id); renderHistory(); renderCurrentConversation(); input.requestFocus();
+        if (callActive) endVoiceCall(false);
+        destroySpeech();
+        history.select(id);
+        renderHistory();
+        renderCurrentConversation();
+        closeSidebar();
+        input.requestFocus();
     }
-    private void sendTyped() { String q=input.getText().toString().trim(); if(q.isEmpty())return; input.setText(""); handle(q); }
 
-    private void handle(String q) {
-        if (q == null || q.trim().isEmpty()) return;
-        String clean=q.trim(); destroySpeech(); appendConversationMessage("user",clean); caption.setText("Ei Chat"); micText.setText("● processando");
-        if (callActive) setCallState("Pensando",clean,Color.rgb(180,180,180));
+    private void sendTyped() {
+        String query = input.getText().toString().trim();
+        if (query.isEmpty()) return;
+        input.setText("");
+        replyShouldSpeak = false;
+        handle(query);
+    }
 
-        String n=clean.toLowerCase(Locale.ROOT);
-        if (callActive && (n.contains("encerrar chamada") || n.contains("finalizar chamada") || n.equals("encerrar"))) {
-            appendConversationMessage("assistant","Chamada de voz encerrada."); endVoiceCall(false); return;
+    private void handle(String query) {
+        if (query == null || query.trim().isEmpty()) return;
+        String clean = query.trim();
+        destroySpeech();
+        appendConversationMessage("user", clean);
+        if (callActive) setCallState("Pensando", clean, Color.rgb(180, 180, 180));
+
+        String normalized = clean.toLowerCase(Locale.ROOT);
+        if (callActive && (normalized.contains("encerrar chamada") || normalized.contains("finalizar chamada") || normalized.equals("encerrar"))) {
+            appendConversationMessage("assistant", "Chamada de voz encerrada.");
+            endVoiceCall(false);
+            return;
         }
 
-        CommandEngine.Result r=engine.execute(clean);
-        if (r.handled) {
-            appendConversationMessage("assistant",r.message); micText.setText("● comando executado"); speak(r.message,afterReply()); return;
+        CommandEngine.Result result = engine.execute(clean);
+        if (result.handled) {
+            appendConversationMessage("assistant", result.message);
+            deliverSpeechIfNeeded(result.message);
+            return;
         }
 
-        caption.setText("Ei Chat • pensando"); JSONArray context=history.apiInput(20);
-        ai.askConversation(context,new OpenAiClient.Callback(){
-            @Override public void onSuccess(String answer){ runOnUiThread(()->{
-                caption.setText("Ei Chat"); appendConversationMessage("assistant",answer); micText.setText(callActive?"● respondendo":"● IA pronta");
-                if(callActive)setCallState("Respondendo",answer,Color.rgb(205,205,205)); speak(answer,afterReply());
-            }); }
-            @Override public void onError(String error){ runOnUiThread(()->{
-                caption.setText("Ei Chat • erro da IA"); appendConversationMessage("assistant",error); micText.setText(callActive?"● chamada ativa":"● tente novamente");
-                if(callActive){ setCallState("Não consegui responder",error,Color.rgb(190,120,120));
-                    new Handler(Looper.getMainLooper()).postDelayed(()->{if(callActive&&!callMuted)startVoiceRecognition(true);},900); }
-            }); }
+        JSONArray context = history.apiInput(20);
+        ai.askConversation(context, new OpenAiClient.Callback() {
+            @Override public void onSuccess(String answer) {
+                runOnUiThread(() -> {
+                    appendConversationMessage("assistant", answer);
+                    if (callActive) setCallState("Respondendo", answer, Color.rgb(205, 205, 205));
+                    deliverSpeechIfNeeded(answer);
+                });
+            }
+
+            @Override public void onError(String error) {
+                runOnUiThread(() -> {
+                    appendConversationMessage("assistant", error);
+                    if (callActive) {
+                        callMute.setText("Falar");
+                        callMicLabel.setText("Microfone em espera");
+                        setCallState("Pronto", error, Color.rgb(185, 110, 110));
+                    }
+                    replyShouldSpeak = false;
+                });
+            }
         });
+    }
+
+    private void deliverSpeechIfNeeded(String answer) {
+        boolean shouldSpeak = callActive || replyShouldSpeak;
+        replyShouldSpeak = false;
+        if (!shouldSpeak) return;
+        speak(answer, afterReply());
     }
 
     private Runnable afterReply() {
         if (!callActive) return null;
-        return ()->{ if(callActive&&!callMuted){ setCallState("Ouvindo","Pode continuar falando.",Color.rgb(160,160,160));
-            new Handler(Looper.getMainLooper()).postDelayed(()->startVoiceRecognition(true),260); } };
+        return () -> {
+            if (!callActive || callMuted) return;
+            setCallState("Ouvindo", "Pode continuar falando.", Color.rgb(165, 165, 165));
+            new Handler(Looper.getMainLooper()).postDelayed(() -> startVoiceRecognition(true), 420);
+        };
     }
 
     private void startSingleListening() {
-        if(!auth.isConnected()){connectChatGpt(false);return;}
-        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
-            pendingPermission=true; pendingVoiceCall=false; requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},REQ_MIC); return;
+        if (!auth.isConnected()) {
+            connectChatGpt(false);
+            return;
         }
-        audioRetry=false; voiceRetryCount=0; startVoiceRecognition(false);
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingPermission = true;
+            pendingVoiceCall = false;
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+        replyShouldSpeak = true;
+        startVoiceRecognition(false);
     }
 
     private void startVoiceCall() {
-        if(callActive)return;
-        if(!auth.isConnected()){connectChatGpt(false);return;}
-        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
-            pendingPermission=true; pendingVoiceCall=true; requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},REQ_MIC); return;
+        if (callActive) return;
+        if (!auth.isConnected()) {
+            connectChatGpt(false);
+            return;
         }
-        callActive=true; callMuted=false; voiceRetryCount=0; callMute.setText("Silenciar"); callOverlay.setVisibility(View.VISIBLE); callEnd.requestFocus();
-        caption.setText("Ei Chat • chamada de voz"); micText.setText("● chamada ativa");
-        setCallState("Ouvindo","Pode falar normalmente. Eu continuo ouvindo depois de cada resposta.",Color.rgb(170,170,170));
-        new Handler(Looper.getMainLooper()).postDelayed(()->startVoiceRecognition(true),280);
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingPermission = true;
+            pendingVoiceCall = true;
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+
+        closeSidebar();
+        callActive = true;
+        callMuted = false;
+        callListening = false;
+        replyShouldSpeak = true;
+        callMute.setText("Silenciar");
+        callMicLabel.setText("Microfone ativo");
+        callOverlay.setVisibility(View.VISIBLE);
+        callEnd.requestFocus();
+        setCallState("Ouvindo", "Pode falar normalmente.", Color.rgb(175, 175, 175));
+        new Handler(Looper.getMainLooper()).postDelayed(() -> startVoiceRecognition(true), 350);
     }
 
     private void endVoiceCall(boolean announce) {
-        callActive=false; callMuted=false; destroySpeech(); if(tts!=null)try{tts.stop();}catch(Throwable ignored){} afterSpeech=null;
-        callOverlay.setVisibility(View.GONE); caption.setText("Ei Chat"); micText.setText(auth.isConnected()?"● IA pronta":"● conectar ChatGPT");
-        if(announce)showNotice("Chamada de voz encerrada."); callButton.requestFocus();
+        callActive = false;
+        callMuted = false;
+        callListening = false;
+        replyShouldSpeak = false;
+        destroySpeech();
+        if (tts != null) try { tts.stop(); } catch (Throwable ignored) {}
+        afterSpeech = null;
+        callOverlay.setVisibility(View.GONE);
+        if (announce) showNotice("Chamada de voz encerrada.");
+        callButton.requestFocus();
     }
 
     private void toggleCallMute() {
-        if(!callActive)return; callMuted=!callMuted;
-        if(callMuted){ destroySpeech(); callMute.setText("Ativar microfone"); callMicLabel.setText("Microfone silenciado");
-            setCallState("Pausado","O microfone está silenciado.",Color.rgb(130,130,130));
-        } else { callMute.setText("Silenciar"); callMicLabel.setText("Microfone ativo");
-            setCallState("Ouvindo","Pode continuar falando.",Color.rgb(170,170,170)); startVoiceRecognition(true); }
+        if (!callActive) return;
+
+        if (callMuted) {
+            callMuted = false;
+            callMute.setText("Silenciar");
+            callMicLabel.setText("Microfone ativo");
+            setCallState("Ouvindo", "Pode continuar falando.", Color.rgb(170, 170, 170));
+            startVoiceRecognition(true);
+            return;
+        }
+
+        if (!callListening) {
+            callMute.setText("Silenciar");
+            callMicLabel.setText("Microfone ativo");
+            setCallState("Ouvindo", "Pode falar…", Color.rgb(170, 170, 170));
+            startVoiceRecognition(true);
+            return;
+        }
+
+        callMuted = true;
+        destroySpeech();
+        callMute.setText("Ativar microfone");
+        callMicLabel.setText("Microfone silenciado");
+        setCallState("Pausado", "O microfone está silenciado.", Color.rgb(130, 130, 130));
     }
 
-    private void setCallState(String state,String transcript,int color) {
-        if(callStatus!=null)callStatus.setText(state); if(callTranscript!=null&&transcript!=null)callTranscript.setText(transcript);
-        if(callOrb!=null)callOrb.setBackground(circle(Color.rgb(38,38,38),color,4));
-        if(callMicLabel!=null&&!callMuted)callMicLabel.setText(callActive?"Microfone ativo":"Microfone inativo");
+    private void setCallState(String state, String transcript, int color) {
+        if (callStatus != null) callStatus.setText(state);
+        if (callTranscript != null && transcript != null) callTranscript.setText(transcript);
+        if (callOrb != null) callOrb.setBackground(circle(Color.rgb(39, 39, 39), color, 4));
+        if (callMicLabel != null && !callMuted) callMicLabel.setText(callListening ? "Microfone ativo" : "Microfone em espera");
     }
 
     private void startVoiceRecognition(boolean fromCall) {
-        if(!auth.isConnected()){if(fromCall)endVoiceCall(false);connectChatGpt(false);return;}
-        if(fromCall&&(!callActive||callMuted))return;
-        if(!SpeechRecognizer.isRecognitionAvailable(this)){
-            caption.setText("Ei Chat • voz indisponível");
-            if(fromCall)setCallState("Voz indisponível","A TV não disponibilizou o reconhecimento de voz.",Color.rgb(180,100,100));
-            else showNotice("Esta TV não disponibilizou um serviço de reconhecimento de voz para aplicativos."); return;
+        if (!auth.isConnected()) {
+            if (fromCall) endVoiceCall(false);
+            connectChatGpt(false);
+            return;
         }
-        if(tts!=null)try{tts.stop();}catch(Throwable ignored){}
-        AudioManager am=(AudioManager)getSystemService(AUDIO_SERVICE); if(am!=null)try{am.setMode(AudioManager.MODE_NORMAL);am.setSpeakerphoneOn(false);}catch(Throwable ignored){}
-        destroySpeech(); speech=VoiceRecognizerHelper.create(this); VoiceRecognizerHelper.record(this,"event",fromCall?"call_startListening":"startListening");
-        speech.setRecognitionListener(new RecognitionListener(){
-            @Override public void onReadyForSpeech(Bundle p){ audioRetry=false; VoiceRecognizerHelper.record(MainActivity.this,"event",fromCall?"call_ready":"ready");
-                caption.setText("Ei Chat • ouvindo"); micText.setText("● ouvindo"); if(fromCall)setCallState("Ouvindo","Pode falar…",Color.rgb(185,185,185)); }
-            @Override public void onBeginningOfSpeech(){ VoiceRecognizerHelper.record(MainActivity.this,"event",fromCall?"call_speech_started":"speech_started");
-                if(fromCall)setCallState("Ouvindo","Estou ouvindo você…",Color.rgb(205,205,205)); }
-            @Override public void onRmsChanged(float rms){ micText.setText(rms>2f?"● ouvindo sua voz":"● microfone ativo");
-                if(fromCall&&callOrb!=null){float scale=rms>2f?Math.min(1.18f,1f+rms/35f):1f;callOrb.animate().scaleX(scale).scaleY(scale).setDuration(90).start();} }
-            @Override public void onBufferReceived(byte[] b){}
-            @Override public void onEndOfSpeech(){ VoiceRecognizerHelper.record(MainActivity.this,"event",fromCall?"call_speech_ended":"speech_ended");
-                caption.setText("Ei Chat • entendendo"); micText.setText("● entendendo"); if(fromCall)setCallState("Entendendo","Transformando sua fala em texto…",Color.rgb(170,170,170)); }
-            @Override public void onError(int e){
-                String code=VoiceRecognizerHelper.errorName(e)+" ("+e+")"; VoiceRecognizerHelper.record(MainActivity.this,"error",(fromCall?"call_":"")+code); destroySpeech();
-                if(e==SpeechRecognizer.ERROR_AUDIO&&!audioRetry){ audioRetry=true; caption.setText("Ei Chat • ajustando áudio"); micText.setText("● segunda tentativa");
-                    if(fromCall)setCallState("Ajustando microfone","Tentando novamente…",Color.rgb(165,165,165));
-                    new Handler(Looper.getMainLooper()).postDelayed(()->startVoiceRecognition(fromCall),650); return; }
-                if(fromCall&&callActive&&!callMuted&&(e==SpeechRecognizer.ERROR_NO_MATCH||e==SpeechRecognizer.ERROR_SPEECH_TIMEOUT||e==SpeechRecognizer.ERROR_CLIENT)){
-                    setCallState("Ouvindo","Não entendi. Pode repetir…",Color.rgb(165,165,165));
-                    new Handler(Looper.getMainLooper()).postDelayed(()->{if(callActive&&!callMuted)startVoiceRecognition(true);},700); return; }
-                if(!fromCall&&(e==SpeechRecognizer.ERROR_NO_MATCH||e==SpeechRecognizer.ERROR_SPEECH_TIMEOUT)&&voiceRetryCount<1){
-                    voiceRetryCount++; caption.setText("Ei Chat • ouvindo novamente"); micText.setText("● pode falar");
-                    new Handler(Looper.getMainLooper()).postDelayed(()->startVoiceRecognition(false),450); return; }
-                caption.setText("Ei Chat • erro de voz"); micText.setText("● tente novamente");
-                if(fromCall)setCallState("Erro de voz",speechError(e)+" ["+code+"]",Color.rgb(185,105,105)); else showNotice("Reconhecimento de voz: "+speechError(e)+" ["+code+"].");
+        if (fromCall && (!callActive || callMuted || callListening)) return;
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            if (fromCall) {
+                callMute.setText("Falar");
+                setCallState("Voz indisponível", "A TV não disponibilizou o reconhecimento de voz.", Color.rgb(180, 100, 100));
+            } else {
+                showNotice("Esta TV não disponibilizou reconhecimento de voz para aplicativos.");
             }
-            @Override public void onResults(Bundle b){ ArrayList<String>a=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                if(a==null||a.isEmpty()||a.get(0).trim().isEmpty()){onError(SpeechRecognizer.ERROR_NO_MATCH);return;}
-                String result=a.get(0).trim(); VoiceRecognizerHelper.record(MainActivity.this,"result",(fromCall?"call_":"")+result); voiceRetryCount=0;
-                if(fromCall)setCallState("Pensando",result,Color.rgb(180,180,180)); handle(result); }
-            @Override public void onPartialResults(Bundle b){ ArrayList<String>a=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION); if(a==null||a.isEmpty())return;
-                String partial=a.get(0).trim(); if(partial.isEmpty())return; VoiceRecognizerHelper.record(MainActivity.this,"partial",(fromCall?"call_":"")+partial);
-                if(fromCall)callTranscript.setText(partial); else micText.setText("● "+(partial.length()>34?partial.substring(0,34)+"…":partial)); }
-            @Override public void onEvent(int t,Bundle b){}
+            return;
+        }
+
+        if (tts != null) try { tts.stop(); } catch (Throwable ignored) {}
+        AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (audio != null) {
+            try {
+                audio.setMode(AudioManager.MODE_NORMAL);
+                audio.setSpeakerphoneOn(false);
+            } catch (Throwable ignored) {}
+        }
+
+        destroySpeech();
+        if (fromCall) {
+            callListening = true;
+            callMute.setText("Silenciar");
+            callMicLabel.setText("Microfone ativo");
+        }
+        speech = VoiceRecognizerHelper.create(this);
+        VoiceRecognizerHelper.record(this, "event", fromCall ? "call_startListening" : "startListening");
+
+        speech.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) {
+                VoiceRecognizerHelper.record(MainActivity.this, "event", fromCall ? "call_ready" : "ready");
+                if (fromCall) setCallState("Ouvindo", "Pode falar…", Color.rgb(185, 185, 185));
+            }
+
+            @Override public void onBeginningOfSpeech() {
+                VoiceRecognizerHelper.record(MainActivity.this, "event", fromCall ? "call_speech_started" : "speech_started");
+                if (fromCall) setCallState("Ouvindo", "Estou ouvindo você…", Color.rgb(205, 205, 205));
+            }
+
+            @Override public void onRmsChanged(float rms) {
+                if (fromCall && callOrb != null) {
+                    float scale = rms > 2f ? Math.min(1.16f, 1f + rms / 38f) : 1f;
+                    callOrb.animate().scaleX(scale).scaleY(scale).setDuration(90).start();
+                }
+            }
+
+            @Override public void onBufferReceived(byte[] buffer) {}
+
+            @Override public void onEndOfSpeech() {
+                VoiceRecognizerHelper.record(MainActivity.this, "event", fromCall ? "call_speech_ended" : "speech_ended");
+                if (fromCall) setCallState("Entendendo", "Transformando sua fala em texto…", Color.rgb(170, 170, 170));
+            }
+
+            @Override public void onError(int error) {
+                String code = VoiceRecognizerHelper.errorName(error) + " (" + error + ")";
+                VoiceRecognizerHelper.record(MainActivity.this, "error", (fromCall ? "call_" : "") + code);
+                destroySpeech();
+
+                if (fromCall && callActive) {
+                    callMute.setText("Falar");
+                    callMicLabel.setText("Microfone em espera");
+                    if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_CLIENT) {
+                        setCallState("Pronto", "Não ouvi nada. Pressione “Falar” quando quiser continuar.", Color.rgb(150, 150, 150));
+                    } else {
+                        setCallState("Erro de voz", speechError(error) + " [" + code + "]", Color.rgb(185, 105, 105));
+                    }
+                    return;
+                }
+
+                showNotice("Reconhecimento de voz: " + speechError(error) + " [" + code + "].");
+            }
+
+            @Override public void onResults(Bundle results) {
+                ArrayList<String> values = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (values == null || values.isEmpty() || values.get(0).trim().isEmpty()) {
+                    onError(SpeechRecognizer.ERROR_NO_MATCH);
+                    return;
+                }
+                String result = values.get(0).trim();
+                VoiceRecognizerHelper.record(MainActivity.this, "result", (fromCall ? "call_" : "") + result);
+                callListening = false;
+                replyShouldSpeak = true;
+                if (fromCall) setCallState("Pensando", result, Color.rgb(180, 180, 180));
+                handle(result);
+            }
+
+            @Override public void onPartialResults(Bundle partialResults) {
+                ArrayList<String> values = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (values == null || values.isEmpty()) return;
+                String partial = values.get(0).trim();
+                if (partial.isEmpty()) return;
+                VoiceRecognizerHelper.record(MainActivity.this, "partial", (fromCall ? "call_" : "") + partial);
+                if (fromCall) callTranscript.setText(partial);
+            }
+
+            @Override public void onEvent(int eventType, Bundle params) {}
         });
-        try{speech.startListening(VoiceRecognizerHelper.intent());}
-        catch(Throwable e){ VoiceRecognizerHelper.record(this,"error","start_exception: "+e.getMessage()); caption.setText("Ei Chat • erro de voz");
-            if(fromCall)setCallState("Falha ao abrir o microfone",String.valueOf(e.getMessage()),Color.rgb(185,105,105)); else showNotice("Não foi possível iniciar o microfone: "+e.getMessage()); }
+
+        try {
+            speech.startListening(VoiceRecognizerHelper.intent());
+        } catch (Throwable error) {
+            destroySpeech();
+            if (fromCall) {
+                callMute.setText("Falar");
+                setCallState("Falha ao abrir o microfone", String.valueOf(error.getMessage()), Color.rgb(185, 105, 105));
+            } else {
+                showNotice("Não foi possível iniciar o microfone: " + error.getMessage());
+            }
+        }
     }
 
-    private void destroySpeech(){ if(speech!=null){try{speech.cancel();}catch(Throwable ignored){}try{speech.destroy();}catch(Throwable ignored){}speech=null;} }
-    private void speak(String value,Runnable after){ afterSpeech=after; if(tts==null||value==null||value.trim().isEmpty()){finishSpeechCallback();return;} tts.speak(value,TextToSpeech.QUEUE_FLUSH,null,"ei_chat_reply"); }
-    private void finishSpeechCallback(){ Runnable r=afterSpeech; afterSpeech=null; if(r!=null)runOnUiThread(r); }
+    private void destroySpeech() {
+        if (speech != null) {
+            try { speech.cancel(); } catch (Throwable ignored) {}
+            try { speech.destroy(); } catch (Throwable ignored) {}
+            speech = null;
+        }
+        callListening = false;
+    }
 
-    private void runDiagnostics(){
-        caption.setText("Diagnóstico • microfone"); micText.setText("● verificando"); showNotice("Diagnóstico iniciado. O teste de áudio direto dura cerca de 2,5 segundos.");
-        new AiVoiceRecorder(this).probeBuiltIn((ok,report)->runOnUiThread(()->{
-            String data=TvMicrophone.report(this)+"\nReconhecimento Android: "+(SpeechRecognizer.isRecognitionAvailable(this)?"disponível":"indisponível")+
-                    "\n"+VoiceRecognizerHelper.diagnostic(this)+"\nChatGPT: "+auth.accountLabel()+"\n\n"+report;
-            showNotice(data); micText.setText(ok?"● captura OK":"● captura falhou"); caption.setText("Ei Chat");
+    private void speak(String value, Runnable after) {
+        afterSpeech = after;
+        if (tts == null || value == null || value.trim().isEmpty()) {
+            finishSpeechCallback();
+            return;
+        }
+        tts.speak(value, TextToSpeech.QUEUE_FLUSH, null, "ei_chat_reply");
+    }
+
+    private void finishSpeechCallback() {
+        Runnable callback = afterSpeech;
+        afterSpeech = null;
+        if (callback != null) runOnUiThread(callback);
+    }
+
+    private void runDiagnostics() {
+        closeSidebar();
+        showNotice("Diagnóstico iniciado. O teste de áudio direto dura cerca de 2,5 segundos.");
+        new AiVoiceRecorder(this).probeBuiltIn((ok, report) -> runOnUiThread(() -> {
+            String data = TvMicrophone.report(this)
+                    + "\nReconhecimento Android: " + (SpeechRecognizer.isRecognitionAvailable(this) ? "disponível" : "indisponível")
+                    + "\n" + VoiceRecognizerHelper.diagnostic(this)
+                    + "\nChatGPT: " + auth.accountLabel()
+                    + "\n\n" + report;
+            showNotice(data);
         }));
     }
 
-    private void refreshAccount(){
-        boolean ok=auth.isConnected(); account.setText(ok?"Gerenciar conta":"Conectar ChatGPT"); accountState.setText(ok?"ChatGPT • "+auth.accountLabel():"ChatGPT • não conectado");
-        listen.setEnabled(ok); callButton.setEnabled(ok); listen.setAlpha(ok?1f:.45f); callButton.setAlpha(ok?1f:.45f); micText.setText(ok?"● IA pronta":"● conectar ChatGPT");
+    private void refreshAccount() {
+        boolean connected = auth.isConnected();
+        account.setText(connected ? "Conta" : "Conectar ChatGPT");
+        accountState.setText(connected ? "ChatGPT • conectado" : "ChatGPT • não conectado");
+        listen.setEnabled(connected);
+        callButton.setEnabled(connected);
+        listen.setAlpha(connected ? 1f : .45f);
+        callButton.setAlpha(connected ? 1f : .45f);
     }
 
-    private void accountAction(){
-        if(!auth.isConnected()){connectChatGpt(false);return;}
-        new android.app.AlertDialog.Builder(this).setTitle("Conta ChatGPT").setMessage(auth.accountLabel())
-                .setItems(new String[]{"Trocar conta","Sair da conta","Cancelar"},(d,which)->{if(which==0)switchAccount();else if(which==1)confirmSignOut();else d.dismiss();}).show();
+    private void accountAction() {
+        if (!auth.isConnected()) {
+            connectChatGpt(false);
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Conta ChatGPT")
+                .setMessage(auth.accountLabel())
+                .setItems(new String[]{"Trocar conta", "Sair da conta", "Cancelar"}, (d, which) -> {
+                    if (which == 0) switchAccount();
+                    else if (which == 1) confirmSignOut();
+                    else d.dismiss();
+                })
+                .show();
     }
 
-    private void confirmSignOut(){
-        new android.app.AlertDialog.Builder(this).setTitle("Sair da conta?")
-                .setMessage("O Ei Chat vai apagar desta TV os tokens salvos da conta ChatGPT. O histórico local do Ei Chat será mantido.")
-                .setNegativeButton("Cancelar",null).setPositiveButton("Sair",(d,w)->signOutCurrentAccount()).show();
+    private void confirmSignOut() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Sair da conta?")
+                .setMessage("O Ei Chat vai apagar desta TV os tokens salvos da conta ChatGPT. O histórico local será mantido.")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Sair", (d, w) -> signOutCurrentAccount())
+                .show();
     }
 
-    private void signOutCurrentAccount(){
-        if(callActive)endVoiceCall(false); destroySpeech(); auth.signOut(); ai=new OpenAiClient(this); refreshAccount();
-        showNotice("Conta ChatGPT desconectada. Seu histórico local continua salvo nesta TV."); account.requestFocus();
+    private void signOutCurrentAccount() {
+        if (callActive) endVoiceCall(false);
+        destroySpeech();
+        auth.signOut();
+        ai = new OpenAiClient(this);
+        refreshAccount();
+        closeSidebar();
+        showNotice("Conta ChatGPT desconectada. Seu histórico local continua salvo nesta TV.");
     }
 
-    private void switchAccount(){
-        if(callActive)endVoiceCall(false); destroySpeech(); auth.signOut(); ai=new OpenAiClient(this); refreshAccount();
-        showNotice("Conta atual desconectada. Escolha outra conta no navegador."); connectChatGpt(true);
+    private void switchAccount() {
+        if (callActive) endVoiceCall(false);
+        destroySpeech();
+        auth.signOut();
+        ai = new OpenAiClient(this);
+        refreshAccount();
+        closeSidebar();
+        showNotice("Conta atual desconectada. Escolha outra conta no navegador.");
+        connectChatGpt(true);
     }
 
-    private void connectChatGpt(boolean chooseAccount){
-        caption.setText(chooseAccount?"Trocando conta ChatGPT":"Conectando ao ChatGPT"); showNotice(chooseAccount?"Abrindo o seletor de contas no navegador.":"Abrindo o login do ChatGPT no navegador.");
-        account.setEnabled(false); auth.signIn(chooseAccount,new ChatGptAuth.Callback(){
-            @Override public void onSuccess(String m){runOnUiThread(()->{ai=new OpenAiClient(MainActivity.this);account.setEnabled(true);refreshAccount();showNotice(m+" Agora você pode conversar por texto ou voz.");input.requestFocus();});}
-            @Override public void onError(String e){runOnUiThread(()->{account.setEnabled(true);caption.setText("Ei Chat");refreshAccount();showNotice(e);account.requestFocus();});}
+    private void connectChatGpt(boolean chooseAccount) {
+        closeSidebar();
+        showNotice(chooseAccount ? "Abrindo o seletor de contas no navegador." : "Abrindo o login do ChatGPT no navegador.");
+        account.setEnabled(false);
+        auth.signIn(chooseAccount, new ChatGptAuth.Callback() {
+            @Override public void onSuccess(String message) {
+                runOnUiThread(() -> {
+                    ai = new OpenAiClient(MainActivity.this);
+                    account.setEnabled(true);
+                    refreshAccount();
+                    showNotice(message + " Agora você pode conversar por texto ou voz.");
+                    input.requestFocus();
+                });
+            }
+
+            @Override public void onError(String error) {
+                runOnUiThread(() -> {
+                    account.setEnabled(true);
+                    refreshAccount();
+                    showNotice(error);
+                    menuButton.requestFocus();
+                });
+            }
         });
     }
 
-    private void requestAssistantRole(){
-        try{
-            if(Build.VERSION.SDK_INT>=29){RoleManager rm=(RoleManager)getSystemService(ROLE_SERVICE); if(rm!=null&&rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT)){
-                startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT),REQ_ASSISTANT);return;}}
+    private void requestAssistantRole() {
+        closeSidebar();
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                RoleManager manager = (RoleManager) getSystemService(ROLE_SERVICE);
+                if (manager != null && manager.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
+                    startActivityForResult(manager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT), REQ_ASSISTANT);
+                    return;
+                }
+            }
             startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));
-        }catch(Throwable e){showNotice("A TV não abriu a tela de assistente automaticamente. Abra Configurações > Apps > Assistente padrão.");}
-    }
-
-    private static String speechError(int e){
-        switch(e){
-            case SpeechRecognizer.ERROR_AUDIO:return "erro de áudio da TV";
-            case SpeechRecognizer.ERROR_CLIENT:return "erro do cliente";
-            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:return "sem permissão de microfone";
-            case SpeechRecognizer.ERROR_NETWORK:return "erro de rede";
-            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:return "tempo de rede esgotado";
-            case SpeechRecognizer.ERROR_NO_MATCH:return "não entendi a fala";
-            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:return "reconhecedor ocupado";
-            case SpeechRecognizer.ERROR_SERVER:return "erro do serviço de voz";
-            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:return "nenhuma fala detectada";
-            default:return "código "+e;
+        } catch (Throwable error) {
+            showNotice("A TV não abriu a tela de assistente automaticamente. Abra Configurações > Apps > Assistente padrão.");
         }
     }
 
-    @Override public void onBackPressed(){
-        if(callActive||callOverlay.getVisibility()==View.VISIBLE){endVoiceCall(false);return;}
-        long now=System.currentTimeMillis(); if(now-lastBackAt<=2000L){destroySpeech();if(tts!=null)try{tts.stop();}catch(Throwable ignored){}finishAndRemoveTask();return;}
-        lastBackAt=now; Toast.makeText(this,"Pressione Voltar novamente para sair do Ei Chat",Toast.LENGTH_SHORT).show();
+    private static String speechError(int error) {
+        switch (error) {
+            case SpeechRecognizer.ERROR_AUDIO: return "erro de áudio da TV";
+            case SpeechRecognizer.ERROR_CLIENT: return "erro do cliente";
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: return "sem permissão de microfone";
+            case SpeechRecognizer.ERROR_NETWORK: return "erro de rede";
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: return "tempo de rede esgotado";
+            case SpeechRecognizer.ERROR_NO_MATCH: return "não entendi a fala";
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: return "reconhecedor ocupado";
+            case SpeechRecognizer.ERROR_SERVER: return "erro do serviço de voz";
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: return "nenhuma fala detectada";
+            default: return "código " + error;
+        }
     }
 
-    @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grants){
-        super.onRequestPermissionsResult(code,permissions,grants);
-        if(code==REQ_MIC&&grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED&&pendingPermission){boolean call=pendingVoiceCall;pendingPermission=false;pendingVoiceCall=false;if(call)startVoiceCall();else startSingleListening();}
+    @Override
+    public void onBackPressed() {
+        if (callActive || callOverlay.getVisibility() == View.VISIBLE) {
+            endVoiceCall(false);
+            return;
+        }
+        if (sidebar != null && sidebar.getVisibility() == View.VISIBLE) {
+            closeSidebar();
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastBackAt <= 2000L) {
+            destroySpeech();
+            if (tts != null) try { tts.stop(); } catch (Throwable ignored) {}
+            finishAndRemoveTask();
+            return;
+        }
+        lastBackAt = now;
+        Toast.makeText(this, "Pressione Voltar novamente para sair do Ei Chat", Toast.LENGTH_SHORT).show();
     }
 
-    @Override protected void onResume(){super.onResume();if(auth!=null)refreshAccount();}
-    @Override protected void onDestroy(){callActive=false;destroySpeech();if(tts!=null)tts.shutdown();super.onDestroy();}
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grants) {
+        super.onRequestPermissionsResult(requestCode, permissions, grants);
+        if (requestCode == REQ_MIC && grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED && pendingPermission) {
+            boolean startCall = pendingVoiceCall;
+            pendingPermission = false;
+            pendingVoiceCall = false;
+            if (startCall) startVoiceCall();
+            else startSingleListening();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (auth != null) refreshAccount();
+    }
+
+    @Override
+    protected void onDestroy() {
+        callActive = false;
+        destroySpeech();
+        if (tts != null) tts.shutdown();
+        super.onDestroy();
+    }
 }

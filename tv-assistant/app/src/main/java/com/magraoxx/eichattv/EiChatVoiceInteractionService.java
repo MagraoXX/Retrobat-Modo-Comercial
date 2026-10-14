@@ -44,12 +44,13 @@ public class EiChatVoiceInteractionService extends VoiceInteractionService {
     public void onReady() {
         super.onReady();
         serviceReady = true;
-        getSharedPreferences("ei_chat_runtime", MODE_PRIVATE)
-                .edit()
-                .putLong("voice_service_ready_at", System.currentTimeMillis())
-                .putBoolean("wake_word_enabled", true)
-                .apply();
-        main.postDelayed(this::startWakeRecognition, 700);
+        android.content.SharedPreferences prefs = getSharedPreferences("ei_chat_runtime", MODE_PRIVATE);
+        android.content.SharedPreferences.Editor edit = prefs.edit().putLong("voice_service_ready_at", System.currentTimeMillis());
+        if (!prefs.getBoolean("wake_word_migrated_v25", false)) {
+            edit.putBoolean("wake_word_enabled", false).putBoolean("wake_word_migrated_v25", true);
+        }
+        edit.apply();
+        if (prefs.getBoolean("wake_word_enabled", false)) main.postDelayed(this::startWakeRecognition, 700);
     }
 
     @Override
