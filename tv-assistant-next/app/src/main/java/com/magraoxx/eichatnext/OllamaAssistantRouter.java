@@ -56,7 +56,8 @@ public final class OllamaAssistantRouter implements AssistantRouter {
             messages.put(new JSONObject().put("role", "system").put("content", SYSTEM_PROMPT));
 
             JSONObject user = new JSONObject().put("role", "user").put("content", text == null ? "" : text);
-            if (screenContext != null && screenContext.screenshotJpeg != null && screenContext.screenshotJpeg.length > 0) {
+            boolean hasVisual = screenContext != null && screenContext.screenshotJpeg != null && screenContext.screenshotJpeg.length > 0;
+            if (hasVisual) {
                 JSONArray images = new JSONArray();
                 images.put(Base64.encodeToString(screenContext.screenshotJpeg, Base64.NO_WRAP));
                 user.put("images", images);
@@ -69,6 +70,7 @@ public final class OllamaAssistantRouter implements AssistantRouter {
             JSONObject body = new JSONObject()
                     .put("model", model)
                     .put("stream", false)
+                    .put("think", hasVisual)
                     .put("messages", messages)
                     .put("keep_alive", "10m");
 
