@@ -24,11 +24,48 @@ public class MainActivity extends Activity {
     private TextView orb;
     private EditText composer;
     private LinearLayout conversation;
+    private ContinuousAudioEngine audioEngine;
+    private Button talkButton;
+    private long lastAudioUiAt;
     private final VoiceStateMachine voice = new VoiceStateMachine();
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(buildUi());
+        audioEngine = new ContinuousAudioEngine(this, new ContinuousAudioEngine.Listener() {
+            @Override public void onAudio(short[] samples, int count, float rmsDb) {
+                long now = System.currentTimeMillis();
+                if (now - lastAudioUiAt < 250) return;
+                lastAudioUiAt = now;
+                runOnUiThread(() -> {
+                    if (transcript != null) transcript.setText("Microfone estável • " + Math.round(rmsDb) + " dB");
+                    if (orb != null) {
+                        float level = Math.max(0f, Math.min(1f, (rmsDb + 55f) / 45f));
+                        float scale = 1f + (0.12f * level);
+                        orb.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
+                    }
+                });
+            }
+            @Override public void onStarted() {
+                runOnUiThread(() -> {
+                    voice.onListening("Microfone contínuo ativo. Pode falar.");
+                    if (talkButton != null) talkButton.setText("Parar");
+                });
+            }
+            @Override public void onStopped() {
+                runOnUiThread(() -> {
+                    voice.reset();
+                    if (talkButton != null) talkButton.setText("Falar agora");
+                    if (orb != null) orb.animate().scaleX(1f).scaleY(1f).setDuration(120).start();
+                });
+            }
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    voice.onError(message);
+                    if (talkButton != null) talkButton.setText("Tentar novamente");
+                });
+            }
+        });
         voice.setListener(this::renderVoiceState);
         renderVoiceState(VoiceStateMachine.State.IDLE, "Diga “Ei Chat” quando quiser.");
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -151,8 +188,8 @@ public class MainActivity extends Activity {
         stateStack.addView(stateLabel, new LinearLayout.LayoutParams(-1, dp(24)));
         stateStack.addView(transcript, new LinearLayout.LayoutParams(-1, dp(22)));
         voiceCard.addView(stateStack, new LinearLayout.LayoutParams(0, dp(52), 1f));
-        Button talk = action("Falar agora", v -> voice.simulateWake());
-        voiceCard.addView(talk, new LinearLayout.LayoutParams(dp(130), dp(48)));
+        talkButton = action("Falar agora", v -> toggleAudio());
+        voiceCard.addView(talkButton, new LinearLayout.LayoutParams(dp(150), dp(48)));
         main.addView(voiceCard, new LinearLayout.LayoutParams(-1, dp(72)));
 
         LinearLayout composerBar = new LinearLayout(this);
@@ -218,6 +255,19 @@ public class MainActivity extends Activity {
         conversation.addView(answer, ap);
     }
 
+    private void toggleAudio() {
+        if (audioEngine == null) return;
+        if (audioEngine.isRunning()) {
+            audioEngine.stop();
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+        voice.simulateWake();
+        audioEngine.start();
+    }
     private void renderVoiceState(VoiceStateMachine.State state, String message) {
         if (stateLabel == null) return;
         stateLabel.setText(state.label);
@@ -228,6 +278,10 @@ public class MainActivity extends Activity {
         orb.setBackground(box(color, 24, 0));
     }
 
+    @Override protected void onDestroy() {
+        if (audioEngine != null) audioEngine.stop();
+        super.onDestroy();
+    }
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_ASSIST) {
             voice.simulateWake();
