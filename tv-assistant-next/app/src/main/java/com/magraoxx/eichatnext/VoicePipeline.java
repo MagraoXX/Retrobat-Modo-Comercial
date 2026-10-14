@@ -2,8 +2,6 @@ package com.magraoxx.eichatnext;
 
 import android.content.Context;
 
-import java.io.File;
-
 public final class VoicePipeline {
     public interface Listener {
         void onSpeechStarted();
@@ -22,8 +20,7 @@ public final class VoicePipeline {
         Context app = context.getApplicationContext();
         this.listener = listener;
         this.vad = new SherpaVadEngine(app);
-        File modelDir = new File(app.getFilesDir(), "models/whisper-tiny");
-        this.stt = new SherpaSpeechToTextEngine(modelDir);
+        this.stt = new SherpaSpeechToTextEngine(app);
 
         vad.setListener(new VoiceActivityEngine.Listener() {
             @Override public void onSpeechStarted() {
