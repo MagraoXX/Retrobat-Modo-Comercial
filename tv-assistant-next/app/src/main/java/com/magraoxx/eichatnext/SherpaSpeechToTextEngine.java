@@ -1,5 +1,8 @@
 package com.magraoxx.eichatnext;
 
+import android.content.Context;
+import android.content.res.AssetManager;
+
 import com.k2fsa.sherpa.onnx.FeatureConfig;
 import com.k2fsa.sherpa.onnx.OfflineModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineRecognizer;
@@ -8,21 +11,26 @@ import com.k2fsa.sherpa.onnx.OfflineRecognizerResult;
 import com.k2fsa.sherpa.onnx.OfflineStream;
 import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig;
 
-import java.io.File;
+import java.io.InputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class SherpaSpeechToTextEngine implements SpeechToTextEngine {
+    private static final String MODEL_DIR = "whisper-tiny";
+    private static final String ENCODER = MODEL_DIR + "/tiny-encoder.int8.onnx";
+    private static final String DECODER = MODEL_DIR + "/tiny-decoder.int8.onnx";
+    private static final String TOKENS = MODEL_DIR + "/tiny-tokens.txt";
+
     private final Object lock = new Object();
     private final ExecutorService decoderExecutor = Executors.newSingleThreadExecutor();
-    private final File modelDir;
+    private final AssetManager assets;
     private Listener listener;
     private OfflineRecognizer recognizer;
     private OfflineStream stream;
     private boolean released;
 
-    public SherpaSpeechToTextEngine(File modelDir) {
-        this.modelDir = modelDir;
+    public SherpaSpeechToTextEngine(Context context) {
+        this.assets = context.getApplicationContext().getAssets();
     }
 
     @Override public void setListener(Listener listener) {
@@ -30,7 +38,7 @@ public final class SherpaSpeechToTextEngine implements SpeechToTextEngine {
     }
 
     public boolean hasModelFiles() {
-        return encoder().isFile() && decoder().isFile() && tokens().isFile();
+        return assetExists(ENCODER) && assetExists(DECODER) && assetExists(TOKENS);
     }
 
     public boolean initialize() {
@@ -38,7 +46,7 @@ public final class SherpaSpeechToTextEngine implements SpeechToTextEngine {
             if (released) return false;
             if (recognizer != null) return true;
             if (!hasModelFiles()) {
-                emitError("Modelo Whisper português ainda não foi instalado.");
+                emitError("Modelo Whisper português não está presente no APK.");
                 return false;
             }
             try {
@@ -47,14 +55,15 @@ public final class SherpaSpeechToTextEngine implements SpeechToTextEngine {
                 feature.setFeatureDim(80);
 
                 OfflineWhisperModelConfig whisper = new OfflineWhisperModelConfig();
-                whisper.setEncoder(encoder().getAbsolutePath());
-                whisper.setDecoder(decoder().getAbsolutePath());
+                whisper.setEncoder(ENCODER);
+                whisper.setDecoder(DECODER);
                 whisper.setLanguage("pt");
                 whisper.setTask("transcribe");
+                whisper.setTailPaddings(500);
 
                 OfflineModelConfig model = new OfflineModelConfig();
                 model.setWhisper(whisper);
-                model.setTokens(tokens().getAbsolutePath());
+                model.setTokens(TOKENS);
                 model.setModelType("whisper");
                 model.setNumThreads(Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)));
                 model.setProvider("cpu");
@@ -64,7 +73,7 @@ public final class SherpaSpeechToTextEngine implements SpeechToTextEngine {
                 config.setModelConfig(model);
                 config.setDecodingMethod("greedy_search");
 
-                recognizer = new OfflineRecognizer(null, config);
+                recognizer = new OfflineRecognizer(assets, config);
                 return true;
             } catch (Throwable error) {
                 emitError("Falha ao iniciar STT local: " + error.getMessage());
@@ -151,9 +160,13 @@ public final class SherpaSpeechToTextEngine implements SpeechToTextEngine {
         }
     }
 
-    private File encoder() { return new File(modelDir, "tiny-encoder.int8.onnx"); }
-    private File decoder() { return new File(modelDir, "tiny-decoder.int8.onnx"); }
-    private File tokens() { return new File(modelDir, "tiny-tokens.txt"); }
+    private boolean assetExists(String path) {
+        try (InputStream input = assets.open(path, AssetManager.ACCESS_STREAMING)) {
+            return input.read() >= -1;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
 
     private void emitError(String message) {
         Listener current = listener;
