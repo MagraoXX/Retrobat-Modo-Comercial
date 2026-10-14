@@ -33,6 +33,7 @@ public class MainActivity extends Activity {
     private OllamaAssistantRouter assistantRouter;
     private LanKokoroTextToSpeechEngine ttsEngine;
     private VoiceSessionController voiceSession;
+    private LocalTvCommandEngine localCommands;
     private final VoiceStateMachine voice = new VoiceStateMachine();
 
     private long lastAudioUiAt;
@@ -44,6 +45,7 @@ public class MainActivity extends Activity {
         setContentView(buildUi());
         voice.setListener(this::renderVoiceState);
 
+        localCommands = new LocalTvCommandEngine(this);
         assistantRouter = new OllamaAssistantRouter("http://192.168.10.17:11434", "qwen3-vl:4b");
         ttsEngine = new LanKokoroTextToSpeechEngine(
                 this,
@@ -331,6 +333,20 @@ public class MainActivity extends Activity {
         conversation.removeAllViews();
         appendUserMessage(clean);
         if (fromVoice) voice.onThinking(clean);
+
+        LocalTvCommandEngine.Result command = localCommands == null
+                ? LocalTvCommandEngine.Result.unhandled()
+                : localCommands.execute(clean);
+        if (command.handled) {
+            appendAssistantMessage(command.message);
+            if (fromVoice && voiceSession != null && voiceSession.isActive() && ttsEngine != null) {
+                lastSpokenText = command.message;
+                ttsEngine.speak(command.message);
+            } else if (fromVoice) {
+                voice.onListening(command.message);
+            }
+            return;
+        }
 
         assistantRouter.ask(clean, null, new AssistantRouter.Callback() {
             @Override public void onAnswer(String answer) {
