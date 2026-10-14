@@ -36,13 +36,19 @@ public class MainActivity extends Activity {
     private LocalTvCommandEngine localCommands;
     private final VoiceStateMachine voice = new VoiceStateMachine();
 
+    private ConversationStore history;
+    private long requestVersion;
+    private boolean showingWelcome = true;
+    private boolean restoringHistory;
     private long lastAudioUiAt;
     private long lastBackAt;
     private String lastSpokenText = "";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        history = new ConversationStore(this);
         setContentView(buildUi());
+        restoreConversation();
         voice.setListener(this::renderVoiceState);
 
         localCommands = new LocalTvCommandEngine(this);
@@ -77,8 +83,12 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> submitQuery(command, true));
             }
             @Override public void onEnded() {
-                if (ttsEngine != null) ttsEngine.stop();
-                runOnUiThread(() -> voice.reset());
+                runOnUiThread(() -> {
+                    requestVersion++;
+                    if (assistantRouter != null) assistantRouter.cancel();
+                    if (ttsEngine != null) ttsEngine.stop();
+                    voice.reset();
+                });
             }
             @Override public void onIgnored(String ignored) {
                 runOnUiThread(() -> renderVoiceState(VoiceStateMachine.State.IDLE, "Aguardando “Ei Chat”…"));
@@ -215,7 +225,7 @@ public class MainActivity extends Activity {
         recent.setPadding(dp(4), dp(24), 0, dp(8));
         rail.addView(recent, new LinearLayout.LayoutParams(-1, dp(56)));
 
-        TextView placeholder = label("Histórico local entra na próxima etapa.\nSem login obrigatório.", 13, Color.rgb(150, 154, 165));
+        TextView placeholder = label("Conversa salva neste aparelho.\nSem login obrigatório.", 13, Color.rgb(150, 154, 165));
         placeholder.setLineSpacing(dp(4), 1.1f);
         rail.addView(placeholder, new LinearLayout.LayoutParams(-1, 0, 1f));
         rail.addView(label("Next 0.1 • local-first", 12, Color.rgb(112, 116, 128)), new LinearLayout.LayoutParams(-1, dp(36)));
@@ -295,6 +305,7 @@ public class MainActivity extends Activity {
     }
 
     private void showWelcome() {
+        showingWelcome = true;
         conversation.removeAllViews();
         TextView mark = label("✦", 42, Color.rgb(232, 234, 241));
         mark.setGravity(Gravity.CENTER);
@@ -311,7 +322,28 @@ public class MainActivity extends Activity {
         conversation.addView(sub, new LinearLayout.LayoutParams(-1, dp(70)));
     }
 
+    private void restoreConversation() {
+        org.json.JSONArray saved = history.snapshot();
+        if (saved.length() == 0) return;
+        conversation.removeAllViews();
+        showingWelcome = false;
+        restoringHistory = true;
+        try {
+            for (int i = 0; i < saved.length(); i++) {
+                org.json.JSONObject message = saved.optJSONObject(i);
+                if (message == null) continue;
+                if ("user".equals(message.optString("role"))) {
+                    appendUserMessage(message.optString("content"));
+                } else {
+                    appendAssistantMessage(message.optString("content"));
+                }
+            }
+        } finally { restoringHistory = false; }
+    }
+
     private void clearConversation() {
+        requestVersion++;
+        history.clear();
         if (ttsEngine != null) ttsEngine.stop();
         if (assistantRouter != null) assistantRouter.cancel();
         composer.setText("");
@@ -329,8 +361,14 @@ public class MainActivity extends Activity {
     private void submitQuery(String text, boolean fromVoice) {
         if (text == null || text.trim().isEmpty()) return;
         String clean = text.trim();
+        final long mine = ++requestVersion;
+        assistantRouter.cancel();
+        if (ttsEngine != null) ttsEngine.stop();
         composer.setText("");
-        conversation.removeAllViews();
+        if (showingWelcome) {
+            conversation.removeAllViews();
+            showingWelcome = false;
+        }
         appendUserMessage(clean);
         if (fromVoice) voice.onThinking(clean);
 
@@ -348,9 +386,11 @@ public class MainActivity extends Activity {
             return;
         }
 
+        assistantRouter.setHistory(history.snapshot());
         assistantRouter.ask(clean, null, new AssistantRouter.Callback() {
             @Override public void onAnswer(String answer) {
                 runOnUiThread(() -> {
+                    if (mine != requestVersion || isDestroyed()) return;
                     appendAssistantMessage(answer);
                     if (fromVoice && voiceSession != null && voiceSession.isActive()) {
                         lastSpokenText = answer;
@@ -360,6 +400,7 @@ public class MainActivity extends Activity {
             }
             @Override public void onError(String message) {
                 runOnUiThread(() -> {
+                    if (mine != requestVersion || isDestroyed()) return;
                     appendAssistantMessage(message);
                     if (fromVoice) voice.onError(message);
                 });
@@ -368,6 +409,7 @@ public class MainActivity extends Activity {
     }
 
     private void appendUserMessage(String text) {
+        if (!restoringHistory) history.append("user", text);
         TextView user = label(text, 16, Color.WHITE);
         user.setPadding(dp(18), dp(12), dp(18), dp(12));
         user.setBackground(box(Color.rgb(49, 51, 60), 18, 0));
@@ -378,6 +420,7 @@ public class MainActivity extends Activity {
     }
 
     private void appendAssistantMessage(String text) {
+        if (!restoringHistory) history.append("assistant", text == null ? "" : text);
         TextView answer = label(text == null ? "" : text, 16, Color.rgb(230, 232, 238));
         answer.setLineSpacing(dp(3), 1.12f);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
@@ -388,6 +431,7 @@ public class MainActivity extends Activity {
     private void toggleAudio() {
         if (audioEngine == null) return;
         if (audioEngine.isRunning()) {
+            if (voiceSession != null) voiceSession.end();
             audioEngine.stop();
             return;
         }
@@ -451,9 +495,10 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        requestVersion++;
         if (audioEngine != null) audioEngine.stop();
         if (voicePipeline != null) voicePipeline.release();
-        if (assistantRouter != null) assistantRouter.cancel();
+        if (assistantRouter != null) assistantRouter.release();
         if (ttsEngine != null) ttsEngine.release();
         super.onDestroy();
     }

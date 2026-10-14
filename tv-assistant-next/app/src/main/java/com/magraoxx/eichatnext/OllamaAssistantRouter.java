@@ -28,6 +28,8 @@ public final class OllamaAssistantRouter implements AssistantRouter {
     private final String model;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile Future<?> active;
+    private volatile HttpURLConnection activeConnection;
+    private JSONArray history = new JSONArray();
 
     public OllamaAssistantRouter(String baseUrl, String model) {
         String clean = baseUrl == null ? "" : baseUrl.trim();
@@ -36,16 +38,24 @@ public final class OllamaAssistantRouter implements AssistantRouter {
         this.model = model == null || model.trim().isEmpty() ? "qwen3-vl:4b" : model.trim();
     }
 
-    @Override public synchronized void ask(String text, ScreenContextProvider.Context screenContext, Callback callback) {
-        cancel();
-        active = executor.submit(() -> request(text, screenContext, callback));
+    public synchronized void setHistory(JSONArray messages) {
+        try { history = new JSONArray(messages.toString()); }
+        catch (Exception ignored) { history = new JSONArray(); }
     }
 
-    private void request(String text, ScreenContextProvider.Context screenContext, Callback callback) {
+    @Override public synchronized void ask(String text, ScreenContextProvider.Context screenContext, Callback callback) {
+        cancel();
+        final JSONArray prior = history;
+        active = executor.submit(() -> request(text, screenContext, prior, callback));
+    }
+
+    private void request(String text, ScreenContextProvider.Context screenContext, JSONArray prior, Callback callback) {
         HttpURLConnection connection = null;
         try {
             URL url = new URL(baseUrl + "/api/chat");
+            if (Thread.currentThread().isInterrupted()) return;
             connection = (HttpURLConnection) url.openConnection();
+            activeConnection = connection;
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(3500);
             connection.setReadTimeout(90000);
@@ -54,6 +64,15 @@ public final class OllamaAssistantRouter implements AssistantRouter {
 
             JSONArray messages = new JSONArray();
             messages.put(new JSONObject().put("role", "system").put("content", SYSTEM_PROMPT));
+            // The screen has already saved this turn; attach it only once below.
+            int end = prior.length();
+            JSONObject last = end == 0 ? null : prior.optJSONObject(end - 1);
+            if (last != null && "user".equals(last.optString("role"))
+                    && (text == null ? "" : text).equals(last.optString("content"))) end--;
+            for (int i = Math.max(0, end - 20); i < end; i++) {
+                JSONObject entry = prior.optJSONObject(i);
+                if (entry != null) messages.put(entry);
+            }
 
             JSONObject user = new JSONObject().put("role", "user").put("content", text == null ? "" : text);
             boolean hasVisual = screenContext != null && screenContext.screenshotJpeg != null && screenContext.screenshotJpeg.length > 0;
@@ -80,9 +99,11 @@ public final class OllamaAssistantRouter implements AssistantRouter {
                 output.write(payload);
             }
 
+            if (Thread.currentThread().isInterrupted()) return;
             int status = connection.getResponseCode();
             InputStream input = status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
             String response = readAll(input);
+            if (Thread.currentThread().isInterrupted()) return;
             if (status < 200 || status >= 300) {
                 if (callback != null) callback.onError("IA local respondeu HTTP " + status + ": " + trim(response));
                 return;
@@ -101,6 +122,7 @@ public final class OllamaAssistantRouter implements AssistantRouter {
                 callback.onError("IA local indisponível: " + error.getMessage());
             }
         } finally {
+            if (activeConnection == connection) activeConnection = null;
             if (connection != null) connection.disconnect();
         }
     }
@@ -124,6 +146,9 @@ public final class OllamaAssistantRouter implements AssistantRouter {
         Future<?> current = active;
         active = null;
         if (current != null) current.cancel(true);
+        HttpURLConnection connection = activeConnection;
+        activeConnection = null;
+        if (connection != null) connection.disconnect();
     }
 
     public void release() {
