@@ -50,6 +50,19 @@ jobs:
             -o tv-assistant-next/app/src/main/assets/silero_vad.onnx
           echo "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6  tv-assistant-next/app/src/main/assets/silero_vad.onnx" | sha256sum -c -
 
+      - name: Bundle Whisper tiny multilingual INT8
+        run: |
+          curl -fL --retry 3 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2 \
+            -o whisper-tiny.tar.bz2
+          echo "c46116994e539aa165266d96b325252728429c12535eb9d8b6a2b10f129e66b1  whisper-tiny.tar.bz2" | sha256sum -c -
+          mkdir -p tv-assistant-next/app/src/main/assets/whisper-tiny whisper-extract
+          tar -xjf whisper-tiny.tar.bz2 -C whisper-extract
+          cp whisper-extract/sherpa-onnx-whisper-tiny/tiny-encoder.int8.onnx tv-assistant-next/app/src/main/assets/whisper-tiny/
+          cp whisper-extract/sherpa-onnx-whisper-tiny/tiny-decoder.int8.onnx tv-assistant-next/app/src/main/assets/whisper-tiny/
+          cp whisper-extract/sherpa-onnx-whisper-tiny/tiny-tokens.txt tv-assistant-next/app/src/main/assets/whisper-tiny/
+          ls -lh tv-assistant-next/app/src/main/assets/whisper-tiny/
+
       - name: Build Ei Chat Next
         working-directory: tv-assistant-next
         run: gradle :app:assembleDebug --stacktrace
