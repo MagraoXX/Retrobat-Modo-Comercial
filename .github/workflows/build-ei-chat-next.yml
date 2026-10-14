@@ -38,6 +38,14 @@ jobs:
             -o tv-assistant-next/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  tv-assistant-next/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
 
+      - name: Bundle Silero VAD model
+        run: |
+          mkdir -p tv-assistant-next/app/src/main/assets
+          curl -fL --retry 3 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx \
+            -o tv-assistant-next/app/src/main/assets/silero_vad.onnx
+          echo "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6  tv-assistant-next/app/src/main/assets/silero_vad.onnx" | sha256sum -c -
+
       - name: Build Ei Chat Next
         working-directory: tv-assistant-next
         run: gradle :app:assembleDebug --stacktrace
