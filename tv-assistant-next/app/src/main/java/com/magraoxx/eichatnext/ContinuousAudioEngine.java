@@ -6,6 +6,8 @@ import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.media.audiofx.AcousticEchoCanceler;
+import android.media.audiofx.NoiseSuppressor;
 import android.os.Process;
 
 public final class ContinuousAudioEngine {
@@ -21,6 +23,8 @@ public final class ContinuousAudioEngine {
     private final Listener listener;
     private volatile boolean running;
     private AudioRecord recorder;
+    private AcousticEchoCanceler echoCanceler;
+    private NoiseSuppressor noiseSuppressor;
     private Thread thread;
 
     public ContinuousAudioEngine(Context context, Listener listener) {
@@ -60,6 +64,7 @@ public final class ContinuousAudioEngine {
                 listener.onError("Não foi possível inicializar o microfone.");
                 return;
             }
+            enableAudioEffects(recorder.getAudioSessionId());
             recorder.startRecording();
             running = true;
             listener.onStarted();
@@ -68,6 +73,26 @@ public final class ContinuousAudioEngine {
         } catch (Throwable error) {
             releaseRecorder();
             listener.onError("Falha ao abrir o microfone: " + error.getMessage());
+        }
+    }
+
+    private void enableAudioEffects(int sessionId) {
+        releaseEffects();
+        try {
+            if (AcousticEchoCanceler.isAvailable()) {
+                echoCanceler = AcousticEchoCanceler.create(sessionId);
+                if (echoCanceler != null) echoCanceler.setEnabled(true);
+            }
+        } catch (Throwable ignored) {
+            echoCanceler = null;
+        }
+        try {
+            if (NoiseSuppressor.isAvailable()) {
+                noiseSuppressor = NoiseSuppressor.create(sessionId);
+                if (noiseSuppressor != null) noiseSuppressor.setEnabled(true);
+            }
+        } catch (Throwable ignored) {
+            noiseSuppressor = null;
         }
     }
 
@@ -122,10 +147,26 @@ public final class ContinuousAudioEngine {
     }
 
     private void releaseRecorder() {
+        releaseEffects();
         AudioRecord current = recorder;
         recorder = null;
         if (current != null) {
             try { current.release(); } catch (Throwable ignored) {}
+        }
+    }
+
+    private void releaseEffects() {
+        AcousticEchoCanceler aec = echoCanceler;
+        echoCanceler = null;
+        if (aec != null) {
+            try { aec.setEnabled(false); } catch (Throwable ignored) {}
+            try { aec.release(); } catch (Throwable ignored) {}
+        }
+        NoiseSuppressor ns = noiseSuppressor;
+        noiseSuppressor = null;
+        if (ns != null) {
+            try { ns.setEnabled(false); } catch (Throwable ignored) {}
+            try { ns.release(); } catch (Throwable ignored) {}
         }
     }
 }
